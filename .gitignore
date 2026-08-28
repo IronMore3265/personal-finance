@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Browser profile used by the screenshot script
+.chrome.tmp/
+
+# Temp, backup and capture artifacts
+*.tmp.html
+*.bak
+shot-*.png
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Android local config
+android/local.properties
+
+# Third-party design reference media (kept locally, not in git)
+*.mp4

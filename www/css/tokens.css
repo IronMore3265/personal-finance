@@ -1,0 +1,98 @@
+/* Paisa design tokens.
+   Palette and type come from `Paisa v3 lime.dc.html`; motion tokens from
+   DESIGN.md section 7.2 (measured off the reference reel). */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg: #f4f4f2;
+  --surface: #ffffff;
+  --surface2: #ececea;
+  --shell: #111210;
+
+  /* Ink */
+  --ink: #111210;
+  --ink2: #6b6d67;
+  --ink3: #a2a49e;
+
+  /* Lines */
+  --line: #e6e6e3;
+  --line2: rgba(17, 18, 16, .08);
+
+  /* Brand: lime is the single accent. Never used for data. */
+  --accent: #d8f24a;
+  --accentInk: #111210;
+  --accentSoft: #f2f9cc;
+
+  /* Semantic. Green is direction, lime is affordance - never swapped. */
+  --pos: oklch(0.62 0.15 140);
+  --danger: oklch(0.55 0.19 25);
+  --dangerSoft: oklch(0.94 0.04 25);
+
+  /* Type */
+  --ui: 'Manrope', 'Helvetica Neue', Helvetica, sans-serif;
+  --mono: 'Manrope', 'Helvetica Neue', Helvetica, sans-serif;
+
+  /* Elevation */
+  --sh-card: 0 6px 18px rgba(17, 18, 16, .05);
+  --sh-panel: 0 10px 30px rgba(17, 18, 16, .06);
+  --sh-hero: 0 16px 36px rgba(17, 18, 16, .2);
+  --sh-nav: 0 -10px 30px rgba(17, 18, 16, .07);
+  --sh-fab: 0 10px 24px rgba(17, 18, 16, .2);
+
+  /* Radii - three scales, per DESIGN.md section 8.7 */
+  --r-control: 16px;
+  --r-card: 20px;
+  --r-panel: 26px;
+  --r-sheet: 28px;
+  --r-pill: 99px;
+
+  /* Motion. Nothing bounces; every settle is a clean decelerate. */
+  --ease-enter: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-exit: cubic-bezier(0.65, 0, 1, 1);
+  --ease-move: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-micro: 180ms;
+  --dur-short: 320ms;
+  --dur-screen: 600ms;
+  --dur-hero: 850ms;
+}
+
+:root[data-dark="1"] {
+  color-scheme: dark;
+
+  --bg: #0e0f0d;
+  --surface: #191b17;
+  --surface2: #232520;
+  --shell: #000000;
+
+  --ink: #f3f4ef;
+  --ink2: #a0a29b;
+  --ink3: #6f716a;
+
+  --line: #2a2c26;
+  --line2: rgba(243, 244, 239, .10);
+
+  --accent: #d8f24a;
+  --accentInk: #111210;
+  --accentSoft: #2b3410;
+
+  --pos: oklch(0.78 0.17 140);
+  --danger: oklch(0.68 0.19 25);
+  --dangerSoft: oklch(0.30 0.09 25);
+
+  --sh-card: 0 6px 18px rgba(0, 0, 0, .3);
+  --sh-panel: 0 10px 30px rgba(0, 0, 0, .34);
+  --sh-hero: 0 16px 36px rgba(0, 0, 0, .5);
+  --sh-nav: 0 -10px 30px rgba(0, 0, 0, .35);
+  --sh-fab: 0 10px 24px rgba(0, 0, 0, .45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-micro: 0ms;
+    --dur-short: 0ms;
+    --dur-screen: 0ms;
+    --dur-hero: 0ms;
+  }
+}

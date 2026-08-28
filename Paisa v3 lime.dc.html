@@ -1,0 +1,1139 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;padding:0}
+body{background:#ececea;font-family:'Manrope','Helvetica Neue',Helvetica,sans-serif;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+a{color:#111210;text-decoration:none;border-bottom:2px solid #d8f24a}
+a:hover{color:#5f7000}
+:root{
+--bg:#f4f4f2;--surface:#ffffff;--surface2:#ececea;--ink:#111210;--ink2:#6b6d67;--ink3:#a2a49e;
+--line:#e6e6e3;--line2:rgba(17,18,16,.08);--accent:#d8f24a;--accentInk:#111210;--accentSoft:#f2f9cc;
+--pos:oklch(0.62 0.15 140);--danger:oklch(0.55 0.19 25);--dangerSoft:oklch(0.94 0.04 25);--warn:#d8f24a;--shell:#111210;
+--mono:'Manrope','Helvetica Neue',Helvetica,sans-serif;
+--ui:'Manrope','Helvetica Neue',Helvetica,sans-serif;
+}
+:root[data-dark="1"]{
+--bg:#0e0f0d;--surface:#191b17;--surface2:#232520;--ink:#f3f4ef;--ink2:#a0a29b;--ink3:#6f716a;
+--line:#2a2c26;--line2:rgba(243,244,239,.10);--accent:#d8f24a;--accentInk:#111210;--accentSoft:#2b3410;
+--pos:oklch(0.78 0.17 140);--danger:oklch(0.68 0.19 25);--dangerSoft:oklch(0.30 0.09 25);--warn:#d8f24a;--shell:#000000;
+}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes popIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+</style></helmet>
+
+<div style="display:flex;gap:56px;align-items:flex-start;padding:56px 60px 80px;min-height:100vh;box-sizing:border-box">
+
+  <div style="width:352px;flex:none;padding-top:4px">
+    <div style="display:inline-block;background:#111210;color:#f4f4f2;font:700 10px/1 var(--mono);letter-spacing:.18em;text-transform:uppercase;padding:7px 9px">Prototype · v3 · lime</div>
+    <h1 style="font:700 48px/.95 var(--ui);color:#111210;margin:18px 0 8px;letter-spacing:-.035em">Paisa</h1>
+    <p style="font:400 14px/1.55 var(--ui);color:#5c5e58;margin:0 0 24px;max-width:33ch;text-wrap:pretty">Local-first finance tracker for multi-account, multi-currency spending. Android via Capacitor, real SQLite on device.</p>
+
+    <div style="height:1px;background:rgba(17,18,16,.16);margin:0 0 22px"></div>
+
+    <div style="font:700 10px/1 var(--mono);letter-spacing:.16em;color:#8b8d87;text-transform:uppercase;margin-bottom:14px">What changed in v3</div>
+    <div style="display:flex;flex-direction:column;gap:11px;margin-bottom:26px">
+      <div style="font:400 13px/1.5 var(--ui);color:#5c5e58;border-left:3px solid #d8f24a;padding-left:11px">One family — Manrope, tabular numerals — with weight and size doing the work instead of borders.</div>
+      <div style="font:400 13px/1.5 var(--ui);color:#5c5e58;border-left:3px solid #d8f24a;padding-left:11px">Soft-white cards on light grey, 20–26px radius, low-spread shadows. Borders only where a divider is needed.</div>
+      <div style="font:400 13px/1.5 var(--ui);color:#5c5e58;border-left:3px solid #d8f24a;padding-left:11px">Lime is the single accent: fills, chips and the balance delta. Gains read in green, never in lime text.</div>
+      <div style="font:400 13px/1.5 var(--ui);color:#5c5e58;border-left:3px solid #d8f24a;padding-left:11px">Home leads with the total balance, then one black card for the primary account with its two live actions.</div>
+    </div>
+
+    <div style="font:700 10px/1 var(--mono);letter-spacing:.16em;color:#8b8d87;text-transform:uppercase;margin-bottom:12px">Live in this prototype</div>
+    <div style="font:400 13px/1.65 var(--ui);color:#5c5e58;margin-bottom:26px">Log a transaction on the numpad · mark a bill paid (auto-drafts it) · contribute to a goal · paste an SMS and run the rule table · filter and search activity · flip light/dark from the header.</div>
+
+    <div style="font:700 10px/1 var(--mono);letter-spacing:.16em;color:#8b8d87;text-transform:uppercase;margin-bottom:12px">Still open</div>
+    <div style="font:400 13px/1.65 var(--ui);color:#5c5e58">Transfers: own flow or third type on the same sheet? · Per-account budgets as well as per-category? · Should the USD account show in BDT on Home, or its own currency? · <a href="#">v1 calm version</a> is kept as a separate file.</div>
+  </div>
+
+  <div style="flex:none;background:var(--shell);border-radius:46px;padding:12px;box-shadow:0 34px 80px rgba(17,18,16,.24)">
+    <div style="width:393px;height:852px;border-radius:34px;overflow:hidden;background:var(--bg);position:relative;display:flex;flex-direction:column">
+
+      <div style="height:34px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font:700 11px var(--mono);color:var(--ink);letter-spacing:.04em">
+        <span>9:41</span>
+        <div style="display:flex;gap:5px;align-items:center">
+          <div style="width:18px;height:9px;border:1.5px solid var(--ink);border-radius:3px"></div>
+          <div style="width:7px;height:7px;border-radius:50%;background:var(--ink)"></div>
+        </div>
+      </div>
+
+      <div style="flex:none;display:flex;align-items:flex-end;justify-content:space-between;padding:4px 18px 12px;gap:10px">
+        <div style="min-width:0">
+          <div style="font:700 9.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink3)">{{ screenKicker }}</div>
+          <div style="font:800 29px/1.05 var(--ui);color:var(--ink);letter-spacing:-.035em;margin-top:9px">{{ screenTitle }}</div>
+        </div>
+        <div style="display:flex;gap:7px;flex:none">
+          <div onClick="{{ toggleDark }}" style="width:40px;height:40px;border-radius:50%;background:var(--surface);box-shadow:0 4px 14px rgba(17,18,16,.07);display:flex;align-items:center;justify-content:center;cursor:pointer">
+            <div style="width:15px;height:15px;border-radius:50%;background:linear-gradient(90deg,var(--ink) 50%,rgba(140,140,135,.35) 50%)"></div>
+          </div>
+          <div onClick="{{ goSettings }}" style="width:40px;height:40px;border-radius:50%;background:var(--surface);box-shadow:0 4px 14px rgba(17,18,16,.07);display:flex;flex-direction:column;gap:3px;align-items:center;justify-content:center;cursor:pointer">
+            <div style="width:15px;height:2px;background:var(--ink)"></div>
+            <div style="width:15px;height:2px;background:var(--ink)"></div>
+            <div style="width:9px;height:2px;background:var(--ink)"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:0 18px 108px">
+
+        <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:10px 4px 0;text-align:center">
+            <div style="font:700 10px/1 var(--mono);letter-spacing:.2em;text-transform:uppercase;color:var(--ink3)">Total balance</div>
+            <div style="display:flex;align-items:baseline;gap:8px;margin-top:14px;white-space:nowrap;justify-content:center">
+              <div style="font:800 44px/1 var(--ui);color:var(--ink);letter-spacing:-.045em;font-variant-numeric:tabular-nums">{{ netWorthText }}</div>
+              <div style="font:500 11px/1 var(--mono);color:var(--ink3)">{{ homeCurrency }}</div>
+            </div>
+            <div style="display:flex;margin-top:20px;background:var(--surface);border-radius:22px;padding:2px 16px 14px;box-shadow:0 8px 24px rgba(17,18,16,.05)">
+              <div style="flex:1;padding:12px 10px 0 0">
+                <div style="font:700 9px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.14em">In · Aug</div>
+                <div style="font:700 15px/1 var(--mono);color:var(--pos);margin-top:9px;white-space:nowrap">{{ monthInText }}</div>
+              </div>
+              <div style="width:1px;background:var(--line2)"></div>
+              <div style="flex:1;padding:12px 10px 0">
+                <div style="font:700 9px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.14em">Out · Aug</div>
+                <div style="font:700 15px/1 var(--mono);color:var(--ink);margin-top:9px;white-space:nowrap">{{ monthOutText }}</div>
+              </div>
+              <div style="width:1px;background:var(--line2)"></div>
+              <div style="flex:1;padding:12px 0 0 10px">
+                <div style="font:700 9px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.14em">Net</div>
+                <div style="font:700 15px/1 var(--mono);color:var(--ink);margin-top:9px;white-space:nowrap">{{ monthNetText }}</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="background:#111210;border-radius:26px;padding:19px 20px 20px;margin-top:22px;box-shadow:0 16px 36px rgba(17,18,16,.2)">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <div style="font:600 13px/1 var(--ui);color:rgba(255,255,255,.66)">{{ heroAccountName }}</div>
+              <div style="display:flex;gap:3px;align-items:center">
+                <div style="width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.5)"></div>
+                <div style="width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.5)"></div>
+                <div style="width:4px;height:4px;border-radius:50%;background:rgba(255,255,255,.5)"></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:10px;margin-top:15px;white-space:nowrap">
+              <div style="font:800 27px/1 var(--ui);color:#ffffff;letter-spacing:-.035em;font-variant-numeric:tabular-nums">{{ heroBalanceText }}</div>
+              <div style="font:700 12px/1 var(--ui);color:var(--pos)">{{ heroDeltaText }}</div>
+            </div>
+            <div style="display:flex;gap:9px;margin-top:18px">
+              <div onClick="{{ goReports }}" style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.1);border-radius:99px;padding:11px 14px;cursor:pointer;white-space:nowrap;font:600 12.5px/1 var(--ui);color:#fff">
+                <div style="width:16px;height:16px;border-radius:50%;border:1.5px solid rgba(255,255,255,.7)"></div>insights
+              </div>
+              <div onClick="{{ openAdd }}" style="display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.1);border-radius:99px;padding:11px 14px;cursor:pointer;white-space:nowrap;font:600 12.5px/1 var(--ui);color:#fff">
+                <div style="width:16px;height:16px;border-radius:50%;border:1.5px solid rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;font:700 11px/1 var(--ui)">+</div>add money
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;margin:24px 0 10px">
+            <div style="font:700 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink)">Accounts</div>
+            <div style="flex:1;height:1px;background:var(--line2)"></div>
+            <div style="font:700 10px/1 var(--mono);color:var(--ink3);text-transform:uppercase">{{ accountCountText }}</div>
+          </div>
+          <div style="display:flex;gap:9px;overflow-x:auto;padding:0 18px 4px;margin:0 -18px">
+            <sc-for list="{{ accountCards }}" as="a" hint-placeholder-count="4">
+              <div style="flex:none;width:144px;background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:13px">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <div style="font:700 9px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink)">{{ a.typeLabel }}</div>
+                  <div style="width:8px;height:8px;background:var(--accent)"></div>
+                </div>
+                <div style="font:500 13px/1.2 var(--ui);color:var(--ink2);margin-top:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.name }}</div>
+                <div style="font:700 19px/1 var(--mono);color:var(--ink);margin-top:8px;letter-spacing:-.03em;font-variant-numeric:tabular-nums;white-space:nowrap">{{ a.balanceText }}</div>
+                <div style="font:400 9.5px/1 var(--mono);color:var(--ink3);margin-top:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.sub }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;margin:24px 0 10px">
+            <div style="font:700 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink)">August budget</div>
+            <div style="flex:1;height:1px;background:var(--line2)"></div>
+            <div onClick="{{ goBudgets }}" style="font:700 10px/1 var(--mono);color:var(--pos);text-transform:uppercase;cursor:pointer;border-bottom:1.5px solid var(--pos)">Details</div>
+          </div>
+          <div style="background:var(--surface);border-radius:26px;overflow:hidden;box-shadow:0 10px 30px rgba(17,18,16,.06);padding:17px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;white-space:nowrap;gap:8px">
+              <div style="font:700 26px/1 var(--mono);color:var(--ink);letter-spacing:-.04em;font-variant-numeric:tabular-nums">{{ budgetSpentText }}</div>
+              <div style="font:500 11px/1 var(--mono);color:var(--ink2)">of {{ budgetTotalText }}</div>
+            </div>
+            <div style="height:10px;border-radius:99px;overflow:hidden;margin-top:16px;background:var(--surface2)">
+              <div style="{{ budgetBarStyle }}"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:10px;gap:8px">
+              <div style="font:500 10.5px/1 var(--mono);color:var(--ink2);text-transform:uppercase;letter-spacing:.06em">{{ budgetPctText }} used</div>
+              <div style="font:500 10.5px/1 var(--mono);color:var(--ink2);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap">{{ budgetLeftText }} left</div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;margin:24px 0 10px">
+            <div style="font:700 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink)">Due soon</div>
+            <div style="flex:1;height:1px;background:var(--line2)"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ upcomingBills }}" as="b" hint-placeholder-count="3">
+              <div style="background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:13px 14px;display:flex;align-items:center;gap:12px">
+                <div style="{{ b.pipStyle }}"></div>
+                <div style="flex:1;min-width:0">
+                  <div style="font:500 14px/1.2 var(--ui);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.name }}</div>
+                  <div style="font:400 10px/1 var(--mono);color:var(--ink2);margin-top:7px;text-transform:uppercase;letter-spacing:.08em">{{ b.dueLabel }} · {{ b.freq }}</div>
+                </div>
+                <div style="text-align:right;flex:none">
+                  <div style="font:700 15px/1 var(--mono);color:var(--ink);font-variant-numeric:tabular-nums">{{ b.amountText }}</div>
+                  <div onClick="{{ b.onPay }}" style="font:700 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accentInk);background:var(--accent);border-radius:99px;margin-top:9px;cursor:pointer;padding:7px 11px;display:inline-block">Mark paid</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;margin:24px 0 10px">
+            <div style="font:700 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink)">Recent</div>
+            <div style="flex:1;height:1px;background:var(--line2)"></div>
+            <div onClick="{{ goTxns }}" style="font:700 10px/1 var(--mono);color:var(--pos);text-transform:uppercase;cursor:pointer;border-bottom:1.5px solid var(--pos)">All</div>
+          </div>
+          <div style="background:var(--surface);border-radius:26px;overflow:hidden;box-shadow:0 10px 30px rgba(17,18,16,.06)">
+            <sc-for list="{{ recentTxns }}" as="t" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:11px;padding:13px 14px;border-bottom:1px solid var(--line2)">
+                <div style="{{ t.dotStyle }}"></div>
+                <div style="flex:1;min-width:0">
+                  <div style="font:500 13.5px/1.2 var(--ui);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.title }}</div>
+                  <div style="font:400 9.5px/1 var(--mono);color:var(--ink3);margin-top:6px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.meta }}</div>
+                </div>
+                <div style="{{ t.amountStyle }}">{{ t.amountText }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isTxns }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;gap:8px;margin-bottom:11px">
+            <input value="{{ query }}" onChange="{{ onQuery }}" placeholder="SEARCH NOTE / CATEGORY / ACCOUNT" style="flex:1;background:var(--surface);border-radius:16px;padding:12px 13px;font:500 11px var(--mono);letter-spacing:.04em;color:var(--ink);outline:none;min-width:0;border-radius:18px" />
+            <div onClick="{{ openSms }}" style="flex:none;padding:0 16px;background:var(--accent);border-radius:99px;display:flex;align-items:center;font:700 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accentInk);cursor:pointer;white-space:nowrap">Paste SMS</div>
+          </div>
+          <div style="display:flex;gap:7px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">
+            <sc-for list="{{ filterChips }}" as="c" hint-placeholder-count="4">
+              <div onClick="{{ c.onPick }}" style="{{ c.style }}">{{ c.label }}</div>
+            </sc-for>
+          </div>
+          <div style="display:flex;justify-content:space-between;background:var(--ink);border-radius:16px;padding:13px 15px;margin-bottom:16px;gap:8px">
+            <div style="font:700 10px/1 var(--mono);color:var(--bg);text-transform:uppercase;letter-spacing:.1em">{{ filterCountText }}</div>
+            <div style="font:700 10px/1 var(--mono);color:var(--bg);white-space:nowrap">{{ filterSumText }}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <sc-for list="{{ txnGroups }}" as="g" hint-placeholder-count="3">
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 7px">
+                  <div style="font:700 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink)">{{ g.label }}</div>
+                  <div style="flex:1;height:1px;background:var(--line2)"></div>
+                  <div style="font:500 9.5px/1 var(--mono);color:var(--ink3);white-space:nowrap">{{ g.total }}</div>
+                </div>
+                <div style="background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05)">
+                  <sc-for list="{{ g.items }}" as="t" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:11px;padding:13px 14px;border-bottom:1px solid var(--line2)">
+                      <div style="{{ t.dotStyle }}"></div>
+                      <div style="flex:1;min-width:0">
+                        <div style="display:flex;align-items:center;gap:6px">
+                          <div style="font:500 13.5px/1.2 var(--ui);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.title }}</div>
+                          <sc-if value="{{ t.isSms }}" hint-placeholder-val="{{ false }}">
+                            <div style="font:700 8px/1 var(--mono);letter-spacing:.1em;color:var(--accentInk);background:var(--accent);border-radius:6px;padding:4px 6px;flex:none">SMS</div>
+                          </sc-if>
+                        </div>
+                        <div style="font:400 9.5px/1 var(--mono);color:var(--ink3);margin-top:6px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.meta }}</div>
+                      </div>
+                      <div style="text-align:right;flex:none">
+                        <div style="{{ t.amountStyle }}">{{ t.amountText }}</div>
+                        <sc-if value="{{ t.isFx }}" hint-placeholder-val="{{ false }}">
+                          <div style="font:400 9.5px/1 var(--mono);color:var(--ink3);margin-top:6px;white-space:nowrap">{{ t.fxText }}</div>
+                        </sc-if>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <sc-if value="{{ txnsEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="text-align:center;padding:46px 20px;font:500 12px/1.6 var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--ink3)">Nothing matches that filter</div>
+          </sc-if>
+        </sc-if>
+
+        <sc-if value="{{ isBudgets }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;border-radius:16px;margin-bottom:16px">
+            <div onClick="{{ pickBudgets }}" style="{{ segBudgetStyle }}">Budgets</div>
+            <div onClick="{{ pickGoals }}" style="{{ segGoalStyle }}">Goals</div>
+          </div>
+
+          <sc-if value="{{ showBudgetList }}" hint-placeholder-val="{{ true }}">
+            <div style="background:var(--surface);border-radius:26px;overflow:hidden;box-shadow:0 10px 30px rgba(17,18,16,.06);padding:17px;margin-bottom:16px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <div style="font:700 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2)">August 2026</div>
+                <div style="font:500 9.5px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.1em">{{ daysLeftText }}</div>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:7px;margin-top:13px;white-space:nowrap">
+                <div style="font:700 34px/1 var(--mono);color:var(--ink);letter-spacing:-.05em;font-variant-numeric:tabular-nums">{{ budgetSpentText }}</div>
+                <div style="font:500 11px/1 var(--mono);color:var(--ink2)">/ {{ budgetTotalText }}</div>
+              </div>
+              <div style="height:10px;border-radius:99px;overflow:hidden;margin-top:16px;background:var(--surface2)">
+                <div style="{{ budgetBarStyle }}"></div>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <sc-for list="{{ budgetRows }}" as="b" hint-placeholder-count="5">
+                <div style="background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:14px">
+                  <div style="display:flex;align-items:center;gap:9px">
+                    <div style="{{ b.dotStyle }}"></div>
+                    <div style="flex:1;font:500 14px/1.2 var(--ui);color:var(--ink);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.name }}</div>
+                    <sc-if value="{{ b.over }}" hint-placeholder-val="{{ false }}">
+                      <div style="font:700 8.5px/1 var(--mono);letter-spacing:.08em;color:#fff;background:var(--danger);border-radius:99px;padding:4px 8px;flex:none;white-space:nowrap">OVER {{ b.overText }}</div>
+                    </sc-if>
+                    <div style="font:700 14px/1 var(--mono);color:var(--ink);font-variant-numeric:tabular-nums;flex:none">{{ b.spentText }}</div>
+                  </div>
+                  <div style="height:9px;border-radius:99px;overflow:hidden;margin-top:13px;background:var(--surface2)">
+                    <div style="{{ b.barStyle }}"></div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;margin-top:9px;gap:8px">
+                    <div style="font:400 9.5px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">{{ b.pctText }} of {{ b.limitText }}</div>
+                    <div style="{{ b.leftStyle }}">{{ b.leftText }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ showGoalList }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-direction:column;gap:11px">
+              <sc-for list="{{ goalRows }}" as="g" hint-placeholder-count="3">
+                <div style="background:var(--surface);border-radius:26px;overflow:hidden;box-shadow:0 10px 30px rgba(17,18,16,.06);padding:17px">
+                  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+                    <div style="min-width:0">
+                      <div style="font:600 16px/1.15 var(--ui);color:var(--ink)">{{ g.name }}</div>
+                      <div style="font:400 9.5px/1 var(--mono);color:var(--ink3);margin-top:8px;text-transform:uppercase;letter-spacing:.1em">{{ g.deadlineLabel }}</div>
+                    </div>
+                    <div style="font:700 12px/1 var(--mono);color:var(--accentInk);background:var(--accent);border-radius:99px;padding:7px 11px;flex:none">{{ g.pctText }}</div>
+                  </div>
+                  <div style="display:flex;align-items:baseline;gap:7px;margin-top:16px;white-space:nowrap">
+                    <div style="font:700 26px/1 var(--mono);color:var(--ink);letter-spacing:-.04em;font-variant-numeric:tabular-nums">{{ g.currentText }}</div>
+                    <div style="font:500 11px/1 var(--mono);color:var(--ink2)">of {{ g.targetText }}</div>
+                  </div>
+                  <div style="height:10px;border-radius:99px;overflow:hidden;margin-top:13px;background:var(--surface2)">
+                    <div style="{{ g.barStyle }}"></div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-top:13px;gap:10px">
+                    <div style="font:400 9.5px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap">{{ g.paceText }}</div>
+                    <div style="display:flex;gap:6px;flex:none">
+                      <div onClick="{{ g.add1 }}" style="font:700 10px/1 var(--mono);color:var(--ink);background:var(--surface2);border-radius:99px;padding:8px 12px;cursor:pointer">+1K</div>
+                      <div onClick="{{ g.add5 }}" style="font:700 10px/1 var(--mono);color:var(--accentInk);background:var(--accent);border-radius:99px;padding:7px 8px;cursor:pointer">+5K</div>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </sc-if>
+
+        <sc-if value="{{ isReports }}" hint-placeholder-val="{{ false }}">
+          <div style="background:var(--surface);border-radius:26px;overflow:hidden;box-shadow:0 10px 30px rgba(17,18,16,.06);padding:17px;margin-bottom:13px">
+            <div style="font:700 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink)">Expense by category · Aug</div>
+            <div style="display:flex;align-items:center;gap:18px;margin-top:18px">
+              <div style="position:relative;flex:none;width:120px;height:120px;border-radius:50%">
+                <div style="{{ donutStyle }}"></div>
+                <div style="position:absolute;inset:25px;background:var(--surface);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center">
+                  <div style="font:700 14px/1 var(--mono);color:var(--ink);letter-spacing:-.02em">{{ pieTotalText }}</div>
+                  <div style="font:700 8px/1 var(--mono);color:var(--ink3);margin-top:6px;text-transform:uppercase;letter-spacing:.14em">spent</div>
+                </div>
+              </div>
+              <div style="flex:1;display:flex;flex-direction:column;gap:8px;min-width:0">
+                <sc-for list="{{ pieLegend }}" as="p" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <div style="{{ p.dotStyle }}"></div>
+                    <div style="flex:1;font:500 11.5px/1 var(--ui);color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ p.name }}</div>
+                    <div style="font:700 11px/1 var(--mono);color:var(--ink);flex:none">{{ p.pctText }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+
+          <div style="background:var(--surface);border-radius:26px;overflow:hidden;box-shadow:0 10px 30px rgba(17,18,16,.06);padding:17px;margin-bottom:13px">
+            <div style="font:700 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink)">Income vs expense · 6 months</div>
+            <div style="display:flex;align-items:flex-end;gap:11px;height:130px;margin-top:18px">
+              <sc-for list="{{ trendBars }}" as="m" hint-placeholder-count="6">
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end">
+                  <div style="display:flex;gap:2px;align-items:flex-end;height:100%;width:100%;justify-content:center">
+                    <div style="{{ m.inStyle }}"></div>
+                    <div style="{{ m.outStyle }}"></div>
+                  </div>
+                  <div style="font:700 9px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.06em">{{ m.label }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:16px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line2)">
+              <div style="display:flex;align-items:center;gap:7px"><div style="width:10px;height:10px;background:var(--accent)"></div><div style="font:500 10px/1 var(--mono);color:var(--ink2);text-transform:uppercase;letter-spacing:.1em">Income</div></div>
+              <div style="display:flex;align-items:center;gap:7px"><div style="width:10px;height:10px;background:var(--ink2)"></div><div style="font:500 10px/1 var(--mono);color:var(--ink2);text-transform:uppercase;letter-spacing:.1em">Expense</div></div>
+            </div>
+          </div>
+
+          <div style="background:var(--surface);border-radius:26px;overflow:hidden;box-shadow:0 10px 30px rgba(17,18,16,.06);padding:17px;margin-bottom:13px">
+            <div style="font:700 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink);margin-bottom:16px">Budget vs actual</div>
+            <div style="display:flex;flex-direction:column;gap:13px">
+              <sc-for list="{{ bvaRows }}" as="r" hint-placeholder-count="5">
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:6px;gap:8px">
+                    <div style="font:500 12px/1 var(--ui);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</div>
+                    <div style="font:500 10px/1 var(--mono);color:var(--ink2);white-space:nowrap">{{ r.text }}</div>
+                  </div>
+                  <div style="position:relative;height:10px;border-radius:99px;overflow:hidden;background:var(--surface2)">
+                    <div style="{{ r.actualStyle }}"></div>
+                    <div style="{{ r.markStyle }}"></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="background:var(--surface);border-radius:26px;overflow:hidden;box-shadow:0 10px 30px rgba(17,18,16,.06);padding:17px">
+            <div style="font:700 9.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink);margin-bottom:4px">Account balances</div>
+            <sc-for list="{{ accountCards }}" as="a" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line2)">
+                <div style="font:700 9px/1 var(--mono);letter-spacing:.1em;color:var(--ink3);width:36px;flex:none">{{ a.typeLabel }}</div>
+                <div style="flex:1;font:500 13px/1 var(--ui);color:var(--ink);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.name }}</div>
+                <div style="font:700 13px/1 var(--mono);color:var(--ink);font-variant-numeric:tabular-nums;flex:none">{{ a.balanceText }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+          <div style="font:700 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);margin:2px 0 9px">Appearance</div>
+          <div style="background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:0 15px;margin-bottom:20px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--line2)">
+              <div>
+                <div style="font:500 14px/1 var(--ui);color:var(--ink)">Dark mode</div>
+                <div style="font:400 10px/1 var(--mono);color:var(--ink3);margin-top:7px;text-transform:uppercase;letter-spacing:.08em">Follows system by default</div>
+              </div>
+              <div onClick="{{ toggleDark }}" style="{{ darkSwitchStyle }}"><div style="{{ darkKnobStyle }}"></div></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 0">
+              <div style="font:500 14px/1 var(--ui);color:var(--ink)">Home currency</div>
+              <div style="font:700 12px/1 var(--mono);color:var(--ink2)">{{ homeCurrency }} · ৳</div>
+            </div>
+          </div>
+
+          <div style="font:700 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);margin:0 0 9px">SMS capture</div>
+          <div style="background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:15px;margin-bottom:9px">
+            <div style="font:500 14px/1 var(--ui);color:var(--ink)">Paste an SMS</div>
+            <div style="font:400 11.5px/1.5 var(--ui);color:var(--ink2);margin-top:7px">Runs the rule table on text you paste. No permissions needed — this is the shipping path.</div>
+            <div onClick="{{ openSms }}" style="margin-top:13px;text-align:center;padding:12px;background:var(--accent);border-radius:99px;color:var(--accentInk);font:700 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;cursor:pointer">Open parser</div>
+          </div>
+          <div style="background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:15px;margin-bottom:9px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+              <div style="flex:1">
+                <div style="font:500 14px/1 var(--ui);color:var(--ink)">Live SMS listener</div>
+                <div style="font:400 11.5px/1.5 var(--ui);color:var(--ink2);margin-top:7px">Reads incoming messages automatically and drafts transactions.</div>
+              </div>
+              <div onClick="{{ toggleSmsLive }}" style="{{ smsSwitchStyle }}"><div style="{{ smsKnobStyle }}"></div></div>
+            </div>
+            <div style="{{ smsWarnStyle }}">
+              <div style="font:500 11px/1.5 var(--ui);color:var(--ink)">Requires the READ_SMS permission. Google Play restricts this — a build with the listener on is likely to be rejected for public distribution. Intended for sideloaded personal use.</div>
+            </div>
+          </div>
+          <div style="background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:15px;margin-bottom:20px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <div style="font:500 14px/1 var(--ui);color:var(--ink)">Parse rules</div>
+              <div style="font:700 10px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.1em">{{ ruleCountText }}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;margin-top:13px;border-radius:16px;overflow:hidden">
+              <sc-for list="{{ smsRules }}" as="r" hint-placeholder-count="5">
+                <div style="background:var(--surface2);padding:11px;border-bottom:1px solid var(--line2)">
+                  <div style="display:flex;justify-content:space-between;gap:8px">
+                    <div style="font:700 11px/1 var(--mono);color:var(--ink)">{{ r.sender }}</div>
+                    <div style="font:400 9.5px/1 var(--mono);color:var(--ink3);white-space:nowrap">{{ r.mapLabel }}</div>
+                  </div>
+                  <div style="font:400 9.5px/1.4 var(--mono);color:var(--ink2);margin-top:7px;word-break:break-all">{{ r.pattern }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="margin-top:12px;font:700 10px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--pos);cursor:pointer;border-bottom:1.5px solid var(--pos);display:inline-block">+ Add rule</div>
+          </div>
+
+          <div style="font:700 10px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);margin:0 0 9px">Data</div>
+          <div style="background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:0 15px;margin-bottom:18px">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 0;border-bottom:1px solid var(--line2)">
+              <div style="font:500 14px/1 var(--ui);color:var(--ink)">Export to CSV</div>
+              <div style="font:700 12px/1 var(--mono);color:var(--ink3)">›</div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 0;border-bottom:1px solid var(--line2)">
+              <div style="font:500 14px/1 var(--ui);color:var(--ink)">Backup database file</div>
+              <div style="font:700 12px/1 var(--mono);color:var(--ink3)">›</div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px 0">
+              <div>
+                <div style="font:500 14px/1 var(--ui);color:var(--ink)">Cloud sync</div>
+                <div style="font:400 10px/1 var(--mono);color:var(--ink3);margin-top:7px;text-transform:uppercase;letter-spacing:.08em">Not in v1 — repository layer is ready</div>
+              </div>
+              <div style="font:700 9px/1 var(--mono);color:var(--ink);background:var(--surface2);border-radius:99px;padding:6px 10px;flex:none;letter-spacing:.1em">SOON</div>
+            </div>
+          </div>
+          <div style="font:400 9.5px/1.6 var(--mono);color:var(--ink3);text-align:center;padding-bottom:10px;text-transform:uppercase;letter-spacing:.1em">Paisa v1.0 · local sqlite · {{ txnCountText }}</div>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ sheetAdd }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,.5);animation:fadeIn .18s ease" onClick="{{ closeSheet }}"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-radius:28px 28px 0 0;animation:sheetUp .24s cubic-bezier(.32,.72,0,1);max-height:96%;display:flex;flex-direction:column">
+          <div style="padding:14px 18px 0;flex:none">
+            <div style="display:flex;background:var(--surface2);border-radius:99px;padding:4px">
+              <div onClick="{{ pickExpense }}" style="{{ tabExpenseStyle }}">Expense</div>
+              <div onClick="{{ pickIncome }}" style="{{ tabIncomeStyle }}">Income</div>
+              <div onClick="{{ pickTransfer }}" style="{{ tabTransferStyle }}">Transfer</div>
+            </div>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:0 18px">
+            <div style="text-align:center;padding:20px 0 4px">
+              <div style="display:flex;align-items:baseline;justify-content:center;gap:8px">
+                <div style="font:500 16px/1 var(--mono);color:var(--ink3)">{{ entryCurrencySymbol }}</div>
+                <div style="font:700 52px/1 var(--mono);color:var(--ink);letter-spacing:-.06em;font-variant-numeric:tabular-nums">{{ entryAmountText }}</div>
+              </div>
+              <div style="display:flex;gap:6px;justify-content:center;margin-top:14px">
+                <sc-for list="{{ currencyChips }}" as="c" hint-placeholder-count="2">
+                  <div onClick="{{ c.onPick }}" style="{{ c.style }}">{{ c.label }}</div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ needsRate }}" hint-placeholder-val="{{ false }}">
+                <div style="background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:12px;margin-top:14px;display:flex;align-items:center;gap:10px;text-align:left">
+                  <div style="flex:1;min-width:0">
+                    <div style="font:700 9px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.1em">Rate to {{ entryAccountCurrency }}</div>
+                    <input value="{{ rateText }}" onChange="{{ onRate }}" style="width:100%;background:transparent;border:none;outline:none;font:700 17px var(--mono);color:var(--ink);margin-top:8px;padding:0" />
+                  </div>
+                  <div style="text-align:right;flex:none">
+                    <div style="font:700 9px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.1em">Converted</div>
+                    <div style="font:700 16px/1 var(--mono);color:var(--pos);margin-top:8px">{{ convertedText }}</div>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+
+            <div style="font:700 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);margin:16px 0 8px">Account</div>
+            <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:3px">
+              <sc-for list="{{ accountChips }}" as="a" hint-placeholder-count="4">
+                <div onClick="{{ a.onPick }}" style="{{ a.style }}">{{ a.label }}</div>
+              </sc-for>
+            </div>
+
+            <div style="font:700 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);margin:16px 0 8px">Category</div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+              <sc-for list="{{ categoryChips }}" as="c" hint-placeholder-count="9">
+                <div onClick="{{ c.onPick }}" style="{{ c.style }}">
+                  <div style="{{ c.dotStyle }}"></div>
+                  <div style="font:500 11px/1.2 var(--ui);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:flex;gap:7px;margin:16px 0 4px">
+              <div style="flex:1;background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:10px 12px">
+                <div style="font:700 9px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.1em">Date</div>
+                <div style="font:700 13px/1 var(--mono);color:var(--ink);margin-top:8px">{{ entryDateText }}</div>
+              </div>
+              <div style="flex:2;background:var(--surface);border-radius:20px;box-shadow:0 6px 18px rgba(17,18,16,.05);padding:10px 12px">
+                <div style="font:700 9px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.1em">Note</div>
+                <input value="{{ noteText }}" onChange="{{ onNote }}" placeholder="optional" style="width:100%;background:transparent;border:none;outline:none;font:500 13px var(--ui);color:var(--ink);margin-top:6px;padding:0" />
+              </div>
+            </div>
+          </div>
+          <div style="flex:none;padding:12px 18px 20px;background:var(--bg);border-top:1px solid var(--line2)">
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+              <sc-for list="{{ keys }}" as="k" hint-placeholder-count="12">
+                <div onClick="{{ k.onTap }}" style="{{ k.style }}">{{ k.label }}</div>
+              </sc-for>
+            </div>
+            <div onClick="{{ saveTxn }}" style="{{ saveBtnStyle }}">{{ saveLabel }}</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ sheetSms }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;inset:0;background:rgba(0,0,0,.5);animation:fadeIn .18s ease" onClick="{{ closeSheet }}"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;background:var(--bg);border-radius:28px 28px 0 0;animation:sheetUp .24s cubic-bezier(.32,.72,0,1);max-height:92%;display:flex;flex-direction:column">
+          <div style="padding:16px 18px 4px;flex:none">
+            <div style="font:800 25px/1.05 var(--ui);color:var(--ink);letter-spacing:-.03em">Parse an SMS</div>
+            <div style="font:400 12px/1.5 var(--ui);color:var(--ink2);margin-top:8px">Paste a bank or mobile-banking alert. It's matched against the rule table — nothing leaves the device.</div>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:14px 18px 0">
+            <textarea value="{{ smsText }}" onChange="{{ onSmsText }}" placeholder="Paste message text here" style="width:100%;box-sizing:border-box;height:104px;resize:none;background:var(--surface);border-radius:16px;padding:12px;font:400 12px/1.6 var(--mono);color:var(--ink);outline:none;border-radius:18px"></textarea>
+            <div style="font:700 9px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink);margin:16px 0 8px">Try a sample</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <sc-for list="{{ samples }}" as="s" hint-placeholder-count="4">
+                <div onClick="{{ s.onPick }}" style="font:700 10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink);background:var(--surface);border-radius:16px;padding:9px 10px;cursor:pointer">{{ s.label }}</div>
+              </sc-for>
+            </div>
+            <div onClick="{{ parseSms }}" style="margin-top:15px;text-align:center;padding:14px;border-radius:99px;background:var(--ink);color:var(--bg);font:700 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;cursor:pointer">Run parser</div>
+
+            <sc-if value="{{ parseOk }}" hint-placeholder-val="{{ false }}">
+              <div style="background:var(--surface);border-radius:26px;overflow:hidden;box-shadow:0 10px 30px rgba(17,18,16,.06);padding:15px;margin-top:15px;animation:popIn .2s ease">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                  <div style="font:700 10px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accentInk);background:var(--accent);border-radius:99px;padding:6px 10px">Matched</div>
+                  <div style="font:400 9.5px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.08em">{{ parseRuleLabel }}</div>
+                </div>
+                <div style="display:flex;flex-direction:column;margin-top:13px;border-radius:16px;overflow:hidden">
+                  <sc-for list="{{ parseFields }}" as="f" hint-placeholder-count="5">
+                    <div style="display:flex;justify-content:space-between;gap:8px;background:var(--surface2);padding:11px;border-bottom:1px solid var(--line2)">
+                      <div style="font:400 10px/1 var(--mono);color:var(--ink3);text-transform:uppercase;letter-spacing:.1em">{{ f.k }}</div>
+                      <div style="font:700 11px/1 var(--mono);color:var(--ink);white-space:nowrap">{{ f.v }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div onClick="{{ confirmSms }}" style="margin-top:13px;text-align:center;padding:13px;background:var(--accent);border-radius:99px;color:var(--accentInk);font:700 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;cursor:pointer">Confirm &amp; save</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ parseFail }}" hint-placeholder-val="{{ false }}">
+              <div style="border-radius:18px;background:var(--dangerSoft);padding:13px;margin-top:15px">
+                <div style="font:500 12px/1.5 var(--ui);color:var(--danger)">No rule matched this text. Add a rule in Settings, or enter it manually.</div>
+              </div>
+            </sc-if>
+          </div>
+          <div style="flex:none;padding:12px 18px 20px">
+            <div onClick="{{ closeSheet }}" style="text-align:center;padding:12px;font:700 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);cursor:pointer;border-radius:16px;overflow:hidden">Close</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:18px;right:18px;bottom:94px;background:var(--ink);color:var(--bg);border-radius:18px;padding:14px 16px;font:700 10.5px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;text-align:center;animation:popIn .18s ease">{{ toast }}</div>
+      </sc-if>
+
+      <div style="position:absolute;left:0;right:0;bottom:0;height:80px;background:var(--surface);border-radius:26px 26px 0 0;box-shadow:0 -10px 30px rgba(17,18,16,.07);display:flex;align-items:flex-start;padding-top:14px">
+        <sc-for list="{{ navLeft }}" as="n" hint-placeholder-count="2">
+          <div onClick="{{ n.onPick }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer">
+            <div style="{{ n.pipStyle }}"></div>
+            <div style="{{ n.labelStyle }}">{{ n.label }}</div>
+          </div>
+        </sc-for>
+        <div style="flex:1;display:flex;justify-content:center">
+          <div onClick="{{ openAdd }}" style="width:58px;height:58px;background:var(--accent);border-radius:50%;margin-top:-25px;box-shadow:0 10px 24px rgba(17,18,16,.2);display:flex;align-items:center;justify-content:center;cursor:pointer">
+            <div style="position:relative;width:20px;height:20px">
+              <div style="position:absolute;top:9px;left:0;width:20px;height:3px;background:var(--accentInk)"></div>
+              <div style="position:absolute;left:9px;top:0;width:3px;height:20px;background:var(--accentInk)"></div>
+            </div>
+          </div>
+        </div>
+        <sc-for list="{{ navRight }}" as="n" hint-placeholder-count="2">
+          <div onClick="{{ n.onPick }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer">
+            <div style="{{ n.pipStyle }}"></div>
+            <div style="{{ n.labelStyle }}">{{ n.label }}</div>
+          </div>
+        </sc-for>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:940,&quot;height&quot;:1000},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#d8f24a&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#d8f24a&quot;,&quot;#111210&quot;,&quot;#b3341f&quot;,&quot;#1f6feb&quot;],&quot;section&quot;:&quot;Theme&quot;},&quot;startDark&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Theme&quot;}}">
+const TODAY = '2026-08-28';
+const RATES = { BDT: 1, USD: 122 };
+const SYM = { BDT: '\u09F3', USD: '$' };
+
+const ACCOUNTS = [
+  { id: 'a1', name: 'Cash wallet', type: 'cash', currency: 'BDT', initial: 6200 },
+  { id: 'a2', name: 'City Bank', type: 'bank', currency: 'BDT', initial: 148900 },
+  { id: 'a3', name: 'bKash', type: 'mfs', currency: 'BDT', initial: 9400 },
+  { id: 'a4', name: 'Nagad', type: 'mfs', currency: 'BDT', initial: 2650 },
+  { id: 'a5', name: 'Rocket', type: 'mfs', currency: 'BDT', initial: 1180 },
+  { id: 'a6', name: 'Visa credit', type: 'card', currency: 'BDT', initial: -14300 },
+  { id: 'a7', name: 'Payoneer', type: 'bank', currency: 'USD', initial: 1840 }
+];
+
+const CATS = [
+  { id: 'c1', name: 'Groceries', type: 'expense', color: 'oklch(0.68 0.15 95)' },
+  { id: 'c2', name: 'Transport', type: 'expense', color: 'oklch(0.60 0.13 250)' },
+  { id: 'c3', name: 'Rent', type: 'expense', color: 'oklch(0.55 0.14 300)' },
+  { id: 'c4', name: 'Utilities', type: 'expense', color: 'oklch(0.70 0.16 65)' },
+  { id: 'c5', name: 'Mobile & net', type: 'expense', color: 'oklch(0.65 0.13 195)' },
+  { id: 'c6', name: 'Eating out', type: 'expense', color: 'oklch(0.60 0.17 30)' },
+  { id: 'c7', name: 'Health', type: 'expense', color: 'oklch(0.62 0.15 340)' },
+  { id: 'c8', name: 'Shopping', type: 'expense', color: 'oklch(0.64 0.14 145)' },
+  { id: 'c9', name: 'Fees & charges', type: 'expense', color: 'oklch(0.52 0.03 260)' },
+  { id: 'c10', name: 'Uncategorised', type: 'expense', color: 'oklch(0.62 0.02 260)' },
+  { id: 'i1', name: 'Salary', type: 'income', color: 'oklch(0.66 0.14 160)' },
+  { id: 'i2', name: 'Freelance', type: 'income', color: 'oklch(0.64 0.13 210)' },
+  { id: 'i3', name: 'Received', type: 'income', color: 'oklch(0.68 0.15 130)' }
+];
+
+const SEED_TXNS = [
+  { id: 't1', account: 'a2', type: 'income', cat: 'i1', amount: 92000, currency: 'BDT', rate: 1, date: '2026-08-01', note: 'August salary', source: 'manual' },
+  { id: 't2', account: 'a2', type: 'expense', cat: 'c3', amount: 32000, currency: 'BDT', rate: 1, date: '2026-08-02', note: 'Flat rent', source: 'manual' },
+  { id: 't3', account: 'a7', type: 'income', cat: 'i2', amount: 620, currency: 'USD', rate: 122, date: '2026-08-05', note: 'Upwork milestone', source: 'manual' },
+  { id: 't4', account: 'a3', type: 'expense', cat: 'c1', amount: 3450, currency: 'BDT', rate: 1, date: '2026-08-07', note: 'Shwapno Gulshan', source: 'sms' },
+  { id: 't5', account: 'a1', type: 'expense', cat: 'c2', amount: 260, currency: 'BDT', rate: 1, date: '2026-08-09', note: 'Pathao ride', source: 'manual' },
+  { id: 't6', account: 'a4', type: 'expense', cat: 'c5', amount: 849, currency: 'BDT', rate: 1, date: '2026-08-11', note: 'GP recharge', source: 'sms' },
+  { id: 't7', account: 'a2', type: 'expense', cat: 'c4', amount: 3180, currency: 'BDT', rate: 1, date: '2026-08-13', note: 'DPDC electricity', source: 'manual' },
+  { id: 't8', account: 'a6', type: 'expense', cat: 'c8', amount: 6900, currency: 'BDT', rate: 1, date: '2026-08-15', note: 'Aarong', source: 'manual' },
+  { id: 't9', account: 'a1', type: 'expense', cat: 'c6', amount: 1240, currency: 'BDT', rate: 1, date: '2026-08-17', note: 'Dinner, Dhanmondi', source: 'manual' },
+  { id: 't10', account: 'a3', type: 'expense', cat: 'c1', amount: 2870, currency: 'BDT', rate: 1, date: '2026-08-19', note: 'Agora weekly', source: 'sms' },
+  { id: 't11', account: 'a1', type: 'expense', cat: 'c2', amount: 420, currency: 'BDT', rate: 1, date: '2026-08-21', note: 'CNG fare', source: 'manual' },
+  { id: 't12', account: 'a2', type: 'expense', cat: 'c7', amount: 2600, currency: 'BDT', rate: 1, date: '2026-08-22', note: 'Pharmacy + tests', source: 'manual' },
+  { id: 't13', account: 'a3', type: 'income', cat: 'i3', amount: 2500, currency: 'BDT', rate: 1, date: '2026-08-24', note: 'From Rifat', source: 'sms' },
+  { id: 't14', account: 'a1', type: 'expense', cat: 'c6', amount: 680, currency: 'BDT', rate: 1, date: '2026-08-26', note: 'Coffee run', source: 'manual' },
+  { id: 't15', account: 'a4', type: 'expense', cat: 'c9', amount: 18.5, currency: 'BDT', rate: 1, date: '2026-08-26', note: 'Cash out fee', source: 'sms' },
+  { id: 't16', account: 'a2', type: 'expense', cat: 'c1', amount: 1980, currency: 'BDT', rate: 1, date: '2026-08-27', note: 'Meena Bazar', source: 'manual' }
+];
+
+const BUDGETS = [
+  { id: 'b1', cat: 'c1', limit: 12000 },
+  { id: 'b2', cat: 'c2', limit: 2500 },
+  { id: 'b3', cat: 'c6', limit: 4000 },
+  { id: 'b4', cat: 'c4', limit: 6000 },
+  { id: 'b5', cat: 'c8', limit: 5000 },
+  { id: 'b6', cat: 'c5', limit: 1500 }
+];
+
+const RULES = [
+  { id: 'r1', sender: 'bKash', pattern: 'received Tk ([\\d,]+\\.?\\d*)', type: 'income', account: 'a3', cat: 'i3', label: 'bKash · money in' },
+  { id: 'r2', sender: 'bKash', pattern: '(?:Payment|Send Money|Cash Out) Tk ([\\d,]+\\.?\\d*)', type: 'expense', account: 'a3', cat: 'c10', label: 'bKash · money out' },
+  { id: 'r3', sender: 'NAGAD', pattern: 'Tk ([\\d,]+\\.?\\d*) (?:Cash Out|sent|paid)', type: 'expense', account: 'a4', cat: 'c10', label: 'Nagad · money out' },
+  { id: 'r4', sender: 'Rocket', pattern: 'Tk ([\\d,]+\\.?\\d*) paid to ([A-Z][A-Z ]+)', type: 'expense', account: 'a5', cat: 'c10', label: 'Rocket · bill pay' },
+  { id: 'r5', sender: 'CityBank', pattern: 'debited by BDT ([\\d,]+\\.?\\d*)', type: 'expense', account: 'a2', cat: 'c10', label: 'City Bank · card debit' },
+  { id: 'r6', sender: 'CityBank', pattern: 'credited by BDT ([\\d,]+\\.?\\d*)', type: 'income', account: 'a2', cat: 'i1', label: 'City Bank · credit' }
+];
+
+const SAMPLES = [
+  { label: 'bKash in', sender: 'bKash', text: 'You have received Tk 2,500.00 from 01712345678. Ref: Rifat. Fee Tk 0.00. Balance Tk 11,900.00. TrxID BJ25X7QW at 28/08/2026 09:14' },
+  { label: 'Nagad out', sender: 'NAGAD', text: 'Cash Out Tk 1,200.00 successful to Agent 016XXXXXXXX. Nagad Balance: Tk 1,431.50. TxnID N8812QP. 28/08/2026' },
+  { label: 'Rocket bill', sender: 'Rocket', text: 'Tk 849.00 paid to GRAMEENPHONE from A/C 017XXXXXXX. Fee Tk 4.25. Balance Tk 327.00. TxnId 8871003' },
+  { label: 'Bank card', sender: 'CityBank', text: 'Dear Customer, your A/C **4471 is debited by BDT 3,450.00 on 28-AUG-26 at SHWAPNO GULSHAN. Available Balance BDT 145,450.00' }
+];
+
+const MERCHANT_MAP = [
+  { k: ['SHWAPNO', 'AGORA', 'MEENA', 'UNIMART', 'DAILY'], cat: 'c1' },
+  { k: ['GRAMEENPHONE', 'ROBI', 'BANGLALINK', 'AIRTEL', 'LINK3', 'AMBERIT'], cat: 'c5' },
+  { k: ['PATHAO', 'UBER', 'CNG'], cat: 'c2' },
+  { k: ['DPDC', 'DESCO', 'WASA', 'TITAS'], cat: 'c4' }
+];
+
+const TYPE_LABEL = { cash: 'CASH', bank: 'BANK', mfs: 'MFS', card: 'CARD' };
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function fmt(n, cur) {
+  const c = cur || 'BDT';
+  const neg = n < 0;
+  const v = Math.abs(n);
+  const s = v >= 1000 ? Math.round(v).toLocaleString('en-US') : (Math.round(v * 100) / 100).toLocaleString('en-US');
+  return (neg ? '-' : '') + SYM[c] + s;
+}
+function pct(a, b) { return b > 0 ? Math.round((a / b) * 100) : 0; }
+function dayName(d) {
+  const dt = new Date(d + 'T00:00:00');
+  return dt.getDate() + ' ' + MONTHS[dt.getMonth()];
+}
+
+class Component extends DCLogic {
+  state = {
+    dark: false,
+    screen: 'home',
+    budgetSeg: 'budgets',
+    filter: 'all',
+    query: '',
+    sheet: null,
+    entryType: 'expense',
+    entryAmount: '',
+    entryAccount: 'a1',
+    entryCat: 'c1',
+    entryCurrency: 'BDT',
+    entryRate: '122',
+    entryNote: '',
+    smsText: '',
+    parse: null,
+    smsLive: false,
+    toast: null,
+    txns: SEED_TXNS.slice(),
+    goals: [
+      { id: 'g1', name: 'Emergency fund', target: 300000, current: 118000, deadline: '2027-06-30' },
+      { id: 'g2', name: 'MacBook Air', target: 165000, current: 62000, deadline: '2026-12-15' },
+      { id: 'g3', name: "Mum's cataract surgery", target: 90000, current: 84000, deadline: '2026-10-01' }
+    ],
+    bills: [
+      { id: 'rb1', name: 'Internet — Link3', amount: 1500, account: 'a2', cat: 'c5', freq: 'Monthly', due: '2026-08-30', paid: false },
+      { id: 'rb2', name: 'Netflix', amount: 790, account: 'a6', cat: 'c8', freq: 'Monthly', due: '2026-09-01', paid: false },
+      { id: 'rb3', name: 'Electricity — DPDC', amount: 3400, account: 'a2', cat: 'c4', freq: 'Monthly', due: '2026-09-05', paid: false }
+    ]
+  };
+
+  componentDidMount() {
+    if (this.props.startDark) this.setState({ dark: true });
+    this.applyTheme();
+  }
+  componentDidUpdate() { this.applyTheme(); }
+  applyTheme() {
+    const el = document.documentElement;
+    el.dataset.dark = this.state.dark ? '1' : '0';
+    const a = this.props.accentColor;
+    if (a) el.style.setProperty('--accent', a);
+  }
+
+  say(msg) {
+    clearTimeout(this._t);
+    this.setState({ toast: msg });
+    this._t = setTimeout(() => this.setState({ toast: null }), 2200);
+  }
+
+  acct(id) { return ACCOUNTS.find(a => a.id === id); }
+  cat(id) { return CATS.find(c => c.id === id); }
+  conv(t) {
+    const a = this.acct(t.account);
+    if (!a) return t.amount;
+    return t.currency === a.currency ? t.amount : t.amount * (t.rate || 1);
+  }
+  homeVal(t) {
+    const a = this.acct(t.account);
+    return this.conv(t) * (RATES[a ? a.currency : 'BDT'] || 1);
+  }
+  balance(id) {
+    const a = this.acct(id);
+    return this.state.txns.filter(t => t.account === id)
+      .reduce((s, t) => s + (t.type === 'income' ? this.conv(t) : -this.conv(t)), a.initial);
+  }
+  monthTxns() { return this.state.txns.filter(t => t.date.slice(0, 7) === '2026-08'); }
+
+  chip(active) {
+    return 'flex:none;padding:11px 15px;border-radius:99px;cursor:pointer;font:700 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;' +
+      (active ? 'background:var(--accent);color:var(--accentInk)' : 'background:var(--surface);color:var(--ink2);box-shadow:0 4px 12px rgba(17,18,16,.05)');
+  }
+  seg(active) {
+    return 'flex:1;text-align:center;padding:12px 4px;cursor:pointer;border-radius:99px;font:700 10.5px var(--mono);letter-spacing:.1em;text-transform:uppercase;' +
+      (active ? 'background:var(--accent);color:var(--accentInk)' : 'background:transparent;color:var(--ink3)');
+  }
+  sw(on) {
+    return 'flex:none;width:52px;height:30px;border-radius:99px;padding:3px;cursor:pointer;display:flex;align-items:center;background:' + (on ? 'var(--accent)' : 'var(--surface2)');
+  }
+  knob(on) {
+    return 'width:24px;height:24px;border-radius:50%;background:var(--ink);transition:transform .18s ease;transform:translateX(' + (on ? '22px' : '0') + ')';
+  }
+  bar(p, color) {
+    return 'height:100%;border-radius:99px;width:' + Math.min(100, p) + '%;background:' + color + ';transition:width .28s ease';
+  }
+  dot(color) { return 'flex:none;width:10px;height:10px;border-radius:50%;background:' + color; }
+
+  parseNow = () => {
+    const text = this.state.smsText || '';
+    if (!text.trim()) { this.setState({ parse: { ok: false } }); return; }
+    for (const r of RULES) {
+      const senderHit = text.toLowerCase().indexOf(r.sender.toLowerCase()) >= 0 ||
+        (r.sender === 'CityBank' && /A\/C \*\*/i.test(text));
+      if (!senderHit) continue;
+      const m = text.match(new RegExp(r.pattern, 'i'));
+      if (!m) continue;
+      const amount = parseFloat(m[1].replace(/,/g, ''));
+      const merchant = (m[2] || '').trim() || (text.match(/at ([A-Z][A-Z ]{3,})/) || [])[1] || '';
+      let cat = r.cat;
+      const up = (merchant + ' ' + text).toUpperCase();
+      for (const mm of MERCHANT_MAP) if (mm.k.some(k => up.indexOf(k) >= 0)) { cat = mm.cat; break; }
+      this.setState({ parse: { ok: true, rule: r, amount: amount, merchant: merchant.trim(), cat: cat } });
+      return;
+    }
+    this.setState({ parse: { ok: false } });
+  };
+
+  confirmParse = () => {
+    const p = this.state.parse;
+    if (!p || !p.ok) return;
+    const t = {
+      id: 'sms' + Date.now(), account: p.rule.account, type: p.rule.type, cat: p.cat,
+      amount: p.amount, currency: 'BDT', rate: 1, date: TODAY,
+      note: p.merchant ? p.merchant.replace(/\s+/g, ' ').toLowerCase() : p.rule.label, source: 'sms'
+    };
+    this.setState(s => ({ txns: [t].concat(s.txns), sheet: null, smsText: '', parse: null, screen: 'txns' }));
+    this.say('Saved from SMS · ' + fmt(p.amount, 'BDT'));
+  };
+
+  saveEntry = () => {
+    const amt = parseFloat(this.state.entryAmount || '0');
+    if (!amt) { this.say('Enter an amount first'); return; }
+    const a = this.acct(this.state.entryAccount);
+    const fx = this.state.entryCurrency !== a.currency;
+    const t = {
+      id: 'm' + Date.now(), account: this.state.entryAccount,
+      type: this.state.entryType === 'transfer' ? 'expense' : this.state.entryType,
+      cat: this.state.entryCat, amount: amt, currency: this.state.entryCurrency,
+      rate: fx ? parseFloat(this.state.entryRate || '1') : 1, date: TODAY,
+      note: this.state.entryNote || this.cat(this.state.entryCat).name, source: 'manual'
+    };
+    this.setState(s => ({ txns: [t].concat(s.txns), sheet: null, entryAmount: '', entryNote: '' }));
+    this.say((this.state.entryType === 'income' ? 'Income' : 'Expense') + ' saved · ' + fmt(amt, this.state.entryCurrency));
+  };
+
+  payBill = (b) => {
+    const t = { id: 'rb' + Date.now(), account: b.account, type: 'expense', cat: b.cat, amount: b.amount, currency: 'BDT', rate: 1, date: TODAY, note: b.name, source: 'manual', recurring: b.id };
+    this.setState(s => ({ txns: [t].concat(s.txns), bills: s.bills.filter(x => x.id !== b.id) }));
+    this.say('Drafted & confirmed · ' + b.name);
+  };
+
+  addGoal = (g, amt) => {
+    this.setState(s => ({ goals: s.goals.map(x => x.id === g.id ? Object.assign({}, x, { current: Math.min(x.target, x.current + amt) }) : x) }));
+    this.say('Added ' + fmt(amt, 'BDT') + ' to ' + g.name);
+  };
+
+  key = (label) => () => {
+    const cur = this.state.entryAmount;
+    if (label === 'del') { this.setState({ entryAmount: cur.slice(0, -1) }); return; }
+    if (label === '.' && cur.indexOf('.') >= 0) return;
+    if (cur.replace('.', '').length > 8) return;
+    this.setState({ entryAmount: cur + label });
+  };
+
+  renderVals() {
+    const s = this.state;
+    const homeCurrency = 'BDT';
+    const month = this.monthTxns();
+    const monthIn = month.filter(t => t.type === 'income').reduce((a, t) => a + this.homeVal(t), 0);
+    const monthOut = month.filter(t => t.type === 'expense').reduce((a, t) => a + this.homeVal(t), 0);
+    const net = ACCOUNTS.reduce((a, acc) => a + this.balance(acc.id) * (RATES[acc.currency] || 1), 0);
+
+    const spentByCat = {};
+    month.filter(t => t.type === 'expense').forEach(t => { spentByCat[t.cat] = (spentByCat[t.cat] || 0) + this.homeVal(t); });
+
+    const budgetRows = BUDGETS.map(b => {
+      const c = this.cat(b.cat);
+      const spent = spentByCat[b.cat] || 0;
+      const p = pct(spent, b.limit);
+      const over = spent > b.limit;
+      return {
+        name: c.name, dotStyle: this.dot(c.color), spentText: fmt(spent, homeCurrency),
+        limitText: fmt(b.limit, homeCurrency), pctText: p + '%', over: over,
+        overText: fmt(spent - b.limit, homeCurrency),
+        barStyle: this.bar(p, over ? 'var(--danger)' : c.color),
+        leftText: over ? 'nothing left' : fmt(b.limit - spent, homeCurrency) + ' left',
+        leftStyle: 'font:700 9.5px/1 var(--mono);text-transform:uppercase;letter-spacing:.08em;white-space:nowrap;color:' + (over ? 'var(--danger)' : 'var(--ink2)')
+      };
+    });
+    const budgetTotal = BUDGETS.reduce((a, b) => a + b.limit, 0);
+    const budgetSpent = BUDGETS.reduce((a, b) => a + (spentByCat[b.cat] || 0), 0);
+    const bp = pct(budgetSpent, budgetTotal);
+
+    const catTotals = Object.keys(spentByCat).map(id => ({ c: this.cat(id), v: spentByCat[id] })).sort((a, b) => b.v - a.v);
+    const pieTotal = catTotals.reduce((a, x) => a + x.v, 0);
+    let acc = 0;
+    const stops = catTotals.map(x => {
+      const from = (acc / pieTotal) * 100; acc += x.v;
+      return x.c.color + ' ' + from.toFixed(2) + '% ' + ((acc / pieTotal) * 100).toFixed(2) + '%';
+    });
+
+    const trendData = [
+      { label: 'Mar', in: 88000, out: 61000 }, { label: 'Apr', in: 91000, out: 74000 },
+      { label: 'May', in: 96000, out: 68000 }, { label: 'Jun', in: 89000, out: 82000 },
+      { label: 'Jul', in: 103000, out: 71000 }, { label: 'Aug', in: monthIn, out: monthOut }
+    ];
+    const trendMax = Math.max.apply(null, trendData.map(d => Math.max(d.in, d.out)));
+
+    let list = s.txns.slice().sort((a, b) => a.date < b.date ? 1 : -1);
+    if (s.filter !== 'all') list = list.filter(t => s.filter === 'sms' ? t.source === 'sms' : t.type === s.filter);
+    if (s.query.trim()) {
+      const q = s.query.toLowerCase();
+      list = list.filter(t => (t.note + ' ' + this.cat(t.cat).name + ' ' + this.acct(t.account).name).toLowerCase().indexOf(q) >= 0);
+    }
+    const row = (t) => {
+      const c = this.cat(t.cat), a = this.acct(t.account);
+      const fx = t.currency !== a.currency;
+      const inc = t.type === 'income';
+      return {
+        title: t.note, isSms: t.source === 'sms', isFx: fx,
+        meta: c.name + ' · ' + a.name + ' · ' + dayName(t.date),
+        dotStyle: this.dot(c.color),
+        amountText: (inc ? '+' : '\u2212') + fmt(t.amount, t.currency),
+        amountStyle: 'font:700 15px/1 var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;letter-spacing:-.02em;color:' + (inc ? 'var(--pos)' : 'var(--ink)'),
+        fxText: '= ' + fmt(this.conv(t), a.currency) + ' @ ' + t.rate
+      };
+    };
+    const groupMap = [];
+    list.forEach(t => {
+      let g = groupMap.find(x => x.date === t.date);
+      if (!g) { g = { date: t.date, items: [], sum: 0 }; groupMap.push(g); }
+      g.items.push(row(t));
+      g.sum += t.type === 'income' ? this.homeVal(t) : -this.homeVal(t);
+    });
+    const txnGroups = groupMap.map(g => ({
+      label: g.date === TODAY ? 'Today · ' + dayName(g.date) : dayName(g.date),
+      total: (g.sum >= 0 ? '+' : '\u2212') + fmt(Math.abs(g.sum), homeCurrency),
+      items: g.items
+    }));
+    const filterSum = list.reduce((a, t) => a + (t.type === 'income' ? this.homeVal(t) : -this.homeVal(t)), 0);
+
+    const entryAcct = this.acct(s.entryAccount);
+    const needsRate = s.entryCurrency !== entryAcct.currency;
+    const amtNum = parseFloat(s.entryAmount || '0');
+
+    const nav = (id, label) => ({
+      label: label,
+      onPick: () => this.setState({ screen: id }),
+      pipStyle: 'width:22px;height:4px;border-radius:99px;background:' + (s.screen === id ? 'var(--accent)' : 'transparent'),
+      labelStyle: 'font:700 9.5px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:' + (s.screen === id ? 'var(--ink)' : 'var(--ink3)')
+    });
+
+    const titles = {
+      home: ['28 August 2026', 'Overview'], txns: ['All accounts', 'Activity'],
+      budgets: ['August 2026', s.budgetSeg === 'goals' ? 'Goals' : 'Budgets'],
+      reports: ['August 2026', 'Reports'], settings: ['Local · on device', 'Settings']
+    };
+    const dueLabel = (d) => {
+      const days = Math.round((new Date(d + 'T00:00:00') - new Date(TODAY + 'T00:00:00')) / 86400000);
+      return days <= 0 ? 'Due today' : days === 1 ? 'Due tomorrow' : 'Due in ' + days + ' days';
+    };
+
+    return {
+      homeCurrency: homeCurrency,
+      screenKicker: titles[s.screen][0], screenTitle: titles[s.screen][1],
+      isHome: s.screen === 'home', isTxns: s.screen === 'txns', isBudgets: s.screen === 'budgets',
+      isReports: s.screen === 'reports', isSettings: s.screen === 'settings',
+      toast: s.toast,
+
+      toggleDark: () => this.setState(x => ({ dark: !x.dark })),
+      goSettings: () => this.setState({ screen: 'settings' }),
+      goBudgets: () => this.setState({ screen: 'budgets', budgetSeg: 'budgets' }),
+      goTxns: () => this.setState({ screen: 'txns' }),
+      goReports: () => this.setState({ screen: 'reports' }),
+      heroAccountName: 'City Bank · primary',
+      heroBalanceText: fmt(this.balance('a2'), 'BDT'),
+      heroDeltaText: (monthIn - monthOut >= 0 ? '+' : '\u2212') + fmt(Math.abs(monthIn - monthOut), homeCurrency) + ' this month',
+      openAdd: () => this.setState({ sheet: 'add' }),
+      openSms: () => this.setState({ sheet: 'sms', parse: null }),
+      closeSheet: () => this.setState({ sheet: null }),
+      sheetAdd: s.sheet === 'add', sheetSms: s.sheet === 'sms',
+
+      netWorthText: fmt(net, homeCurrency),
+      monthInText: '+' + fmt(monthIn, homeCurrency),
+      monthOutText: '\u2212' + fmt(monthOut, homeCurrency),
+      monthNetText: (monthIn - monthOut >= 0 ? '+' : '\u2212') + fmt(Math.abs(monthIn - monthOut), homeCurrency),
+      accountCountText: ACCOUNTS.length + ' accounts',
+      accountCards: ACCOUNTS.map(a => {
+        const b = this.balance(a.id);
+        return {
+          name: a.name, typeLabel: TYPE_LABEL[a.type], balanceText: fmt(b, a.currency),
+          sub: a.currency === homeCurrency ? a.currency : a.currency + ' · ' + fmt(b * RATES[a.currency], homeCurrency)
+        };
+      }),
+
+      budgetSpentText: fmt(budgetSpent, homeCurrency), budgetTotalText: fmt(budgetTotal, homeCurrency),
+      budgetPctText: bp + '%', budgetLeftText: fmt(Math.max(0, budgetTotal - budgetSpent), homeCurrency),
+      budgetBarStyle: this.bar(bp, bp > 100 ? 'var(--danger)' : 'var(--accent)'),
+      daysLeftText: '3 days left',
+      budgetRows: budgetRows,
+      showBudgetList: s.budgetSeg === 'budgets', showGoalList: s.budgetSeg === 'goals',
+      pickBudgets: () => this.setState({ budgetSeg: 'budgets' }), pickGoals: () => this.setState({ budgetSeg: 'goals' }),
+      segBudgetStyle: this.seg(s.budgetSeg === 'budgets'), segGoalStyle: this.seg(s.budgetSeg === 'goals'),
+
+      goalRows: s.goals.map(g => {
+        const p = pct(g.current, g.target);
+        return {
+          name: g.name, pctText: p + '%', currentText: fmt(g.current, homeCurrency), targetText: fmt(g.target, homeCurrency),
+          deadlineLabel: 'By ' + dayName(g.deadline) + ' ' + g.deadline.slice(0, 4),
+          barStyle: this.bar(p, 'var(--accent)'),
+          paceText: fmt(g.target - g.current, homeCurrency) + ' to go',
+          add1: () => this.addGoal(g, 1000), add5: () => this.addGoal(g, 5000)
+        };
+      }),
+
+      upcomingBills: s.bills.map(b => ({
+        name: b.name, freq: b.freq, amountText: fmt(b.amount, homeCurrency), dueLabel: dueLabel(b.due),
+        pipStyle: 'flex:none;width:5px;height:34px;border-radius:99px;background:' + (b.due <= '2026-08-30' ? 'var(--accent)' : 'var(--line2)'),
+        onPay: () => this.payBill(b)
+      })),
+      recentTxns: s.txns.slice().sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 5).map(row),
+
+      query: s.query, onQuery: (e) => this.setState({ query: e.target.value }),
+      filterChips: [['all', 'All'], ['expense', 'Expense'], ['income', 'Income'], ['sms', 'From SMS']].map(f => ({
+        label: f[1], style: this.chip(s.filter === f[0]), onPick: () => this.setState({ filter: f[0] })
+      })),
+      filterCountText: list.length + ' transaction' + (list.length === 1 ? '' : 's'),
+      filterSumText: (filterSum >= 0 ? '+' : '\u2212') + fmt(Math.abs(filterSum), homeCurrency),
+      txnGroups: txnGroups, txnsEmpty: list.length === 0,
+
+      donutStyle: 'position:absolute;inset:0;border-radius:50%;background:conic-gradient(' + stops.join(',') + ')',
+      pieTotalText: pieTotal >= 100000 ? SYM[homeCurrency] + (Math.round(pieTotal / 100) / 10).toFixed(1) + 'k'
+        : pieTotal >= 10000 ? SYM[homeCurrency] + Math.round(pieTotal / 1000) + 'k' : fmt(pieTotal, homeCurrency),
+      pieLegend: catTotals.slice(0, 6).map(x => ({ name: x.c.name, pctText: pct(x.v, pieTotal) + '%', dotStyle: this.dot(x.c.color) })),
+      trendBars: trendData.map(d => ({
+        label: d.label,
+        inStyle: 'width:12px;border-radius:8px 8px 0 0;background:var(--accent);height:' + Math.max(5, (d.in / trendMax) * 100) + '%',
+        outStyle: 'width:12px;border-radius:8px 8px 0 0;background:var(--ink2);height:' + Math.max(5, (d.out / trendMax) * 100) + '%'
+      })),
+      bvaRows: BUDGETS.map(b => {
+        const c = this.cat(b.cat), spent = spentByCat[b.cat] || 0;
+        const scale = Math.max(b.limit, spent) * 1.05;
+        return {
+          name: c.name, text: fmt(spent, homeCurrency) + ' / ' + fmt(b.limit, homeCurrency),
+          actualStyle: 'position:absolute;left:0;top:0;bottom:0;background:' + (spent > b.limit ? 'var(--danger)' : c.color) + ';width:' + (spent / scale) * 100 + '%',
+          markStyle: 'position:absolute;top:0;bottom:0;width:3px;background:var(--ink);left:' + (b.limit / scale) * 100 + '%'
+        };
+      }),
+
+      darkSwitchStyle: this.sw(s.dark), darkKnobStyle: this.knob(s.dark),
+      smsSwitchStyle: this.sw(s.smsLive), smsKnobStyle: this.knob(s.smsLive),
+      toggleSmsLive: () => this.setState(x => ({ smsLive: !x.smsLive })),
+      smsWarnStyle: 'margin-top:13px;padding:13px;border-radius:18px;background:' + (s.smsLive ? 'var(--accentSoft)' : 'var(--surface2)'),
+      smsRules: RULES.map(r => ({ sender: r.sender, pattern: '/' + r.pattern + '/i', mapLabel: this.acct(r.account).name + ' · ' + r.type })),
+      ruleCountText: RULES.length + ' active',
+      txnCountText: s.txns.length + ' transactions stored',
+
+      entryAmountText: s.entryAmount || '0',
+      entryCurrencySymbol: SYM[s.entryCurrency],
+      entryAccountCurrency: entryAcct.currency,
+      needsRate: needsRate,
+      rateText: s.entryRate, onRate: (e) => this.setState({ entryRate: e.target.value }),
+      convertedText: fmt(amtNum * parseFloat(s.entryRate || '1'), entryAcct.currency),
+      noteText: s.entryNote, onNote: (e) => this.setState({ entryNote: e.target.value }),
+      entryDateText: 'Today',
+      pickExpense: () => this.setState({ entryType: 'expense', entryCat: 'c1' }),
+      pickIncome: () => this.setState({ entryType: 'income', entryCat: 'i1' }),
+      pickTransfer: () => this.say('Transfers land in the next pass'),
+      tabExpenseStyle: this.seg(s.entryType === 'expense'), tabIncomeStyle: this.seg(s.entryType === 'income'),
+      tabTransferStyle: this.seg(s.entryType === 'transfer'),
+      currencyChips: ['BDT', 'USD'].map(c => ({ label: c, style: this.chip(s.entryCurrency === c), onPick: () => this.setState({ entryCurrency: c }) })),
+      accountChips: ACCOUNTS.map(a => ({ label: a.name, style: this.chip(s.entryAccount === a.id), onPick: () => this.setState({ entryAccount: a.id }) })),
+      categoryChips: CATS.filter(c => c.type === (s.entryType === 'income' ? 'income' : 'expense')).map(c => ({
+        name: c.name, dotStyle: this.dot(c.color),
+        style: 'display:flex;align-items:center;gap:7px;padding:11px 9px;cursor:pointer;border-radius:16px;' +
+          (s.entryCat === c.id ? 'background:var(--accent);color:var(--accentInk)' : 'background:var(--surface);color:var(--ink2)'),
+        onPick: () => this.setState({ entryCat: c.id })
+      })),
+      keys: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'].map(k => ({
+        label: k === 'del' ? '\u232B' : k, onTap: this.key(k),
+        style: 'text-align:center;padding:14px 0;background:var(--surface);border-radius:18px;box-shadow:0 3px 10px rgba(17,18,16,.06);font:700 20px var(--ui);color:var(--ink);cursor:pointer;user-select:none'
+      })),
+      saveTxn: this.saveEntry,
+      saveLabel: 'Save ' + (s.entryType === 'income' ? 'income' : 'expense') + (amtNum ? ' · ' + fmt(amtNum, s.entryCurrency) : ''),
+      saveBtnStyle: 'margin-top:10px;text-align:center;padding:16px;font:700 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;cursor:pointer;border-radius:99px;' +
+        (amtNum ? 'background:var(--accent);color:var(--accentInk)' : 'background:var(--surface2);color:var(--ink3)'),
+
+      smsText: s.smsText, onSmsText: (e) => this.setState({ smsText: e.target.value }),
+      samples: SAMPLES.map(x => ({ label: x.label, onPick: () => this.setState({ smsText: x.text, parse: null }) })),
+      parseSms: this.parseNow,
+      parseOk: !!(s.parse && s.parse.ok), parseFail: !!(s.parse && !s.parse.ok),
+      parseRuleLabel: s.parse && s.parse.ok ? s.parse.rule.label : '',
+      parseFields: s.parse && s.parse.ok ? [
+        { k: 'Amount', v: fmt(s.parse.amount, 'BDT') },
+        { k: 'Type', v: s.parse.rule.type },
+        { k: 'Account', v: this.acct(s.parse.rule.account).name },
+        { k: 'Category', v: this.cat(s.parse.cat).name },
+        { k: 'Merchant', v: s.parse.merchant || '—' },
+        { k: 'Date', v: '28 Aug 2026' },
+        { k: 'Source', v: 'sms' }
+      ] : [],
+      confirmSms: this.confirmParse,
+
+      navLeft: [nav('home', 'Home'), nav('txns', 'Activity')],
+      navRight: [nav('budgets', 'Budgets'), nav('reports', 'Reports')]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "appId": "com.paisa.tracker",
+  "appName": "Paisa",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#f4f4f2",
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "CapacitorSQLite": {
+      "androidIsEncryption": false
+    },
+    "StatusBar": {
+      "overlaysWebView": false,
+      "style": "LIGHT",
+      "backgroundColor": "#f4f4f2"
+    }
+  }
+}

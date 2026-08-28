@@ -1,0 +1,12 @@
+# Normalize line endings: LF in the repo, native in the working tree
+* text=auto
+
+# Keep shell scripts and the Gradle wrapper LF
+*.sh        text eol=lf
+gradlew     text eol=lf
+
+# Binary assets
+*.png       binary
+*.mp4       binary
+*.woff2     binary
+*.jar       binary
