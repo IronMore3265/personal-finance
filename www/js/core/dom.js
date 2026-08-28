@@ -30,21 +30,4 @@ export const frag = (children) => {
   return f;
 };
 
-/** Section header: label, hairline rule, optional trailing meta or link. */
-export function section(label, trailing) {
-  return el('div', { class: 'section' }, [
-    el('div', { class: 'section__label', text: label }),
-    el('div', { class: 'section__fill' }),
-    trailing || null
-  ]);
-}
-
-export function sectionMeta(text) {
-  return el('div', { class: 'section__meta', text });
-}
-
-export function sectionLink(text, onClick) {
-  return el('div', { class: 'section__link tappable', text, onClick });
-}
-
 export const clear = (node) => { while (node.firstChild) node.removeChild(node.firstChild); };

@@ -1,28 +1,30 @@
-// Budgets and Goals share a screen behind a segmented control - both answer
+// Budgets and Goals share a screen behind an underlined tab pair - both answer
 // "how am I doing against a number I set".
 
 import { el } from '../core/dom.js';
-import { fmt, pct, dayName } from '../core/format.js';
+import { fmt, pct, dayName, monthLabel } from '../core/format.js';
 import { store } from '../core/store.js';
-import { bar, dot } from '../ui/components.js';
-import { TODAY } from '../data/seed.js';
+import { icon } from '../ui/icons.js';
+import { bar, dot, tab } from '../ui/components.js';
+import { renderDebts } from './debts.js';
+
 
 const HOME_CURRENCY = 'BDT';
 
-function segment() {
-  const item = (id, label) => el('div', {
-    class: 'seg__item tappable' + (store.ui.budgetSeg === id ? ' seg__item--on' : ''),
-    text: label,
-    onClick: () => store.set({ budgetSeg: id })
-  });
-  return el('div', { class: 'seg' }, [item('budgets', 'Budgets'), item('goals', 'Goals')]);
+function tabs() {
+  return el('div', { class: 'tabs' }, [
+    tab('Budgets', store.ui.budgetSeg === 'budgets', () => store.set({ budgetSeg: 'budgets' })),
+    tab('Goals', store.ui.budgetSeg === 'goals', () => store.set({ budgetSeg: 'goals' })),
+    // Debts answer the same question as the other two - how am I doing against
+    // a number - so they share the screen rather than claiming a nav slot.
+    tab('Debts', store.ui.budgetSeg === 'debts', () => store.set({ budgetSeg: 'debts' }))
+  ]);
 }
 
-function daysLeft() {
-  const d = new Date(TODAY + 'T00:00:00');
-  const end = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-  const left = end - d.getDate();
-  return left === 0 ? 'Last day' : left + (left === 1 ? ' day left' : ' days left');
+function daysLeftText() {
+  const left = store.daysLeft();
+  if (left <= 0) return 'Last day of ' + monthLabel(store.today);
+  return left + (left === 1 ? ' day' : ' days') + ' left in ' + monthLabel(store.today);
 }
 
 function budgetList() {
@@ -31,16 +33,20 @@ function budgetList() {
   const spent = store.db.budgets.reduce((s, b) => s + (spentByCat[b.cat] || 0), 0);
   const p = pct(spent, total);
 
-  const header = el('div', { class: 'panel', style: { marginBottom: '16px' } }, [
-    el('div', { class: 'bighead' }, [
-      el('div', { class: 'bighead__k', text: 'August 2026' }),
-      el('div', { class: 'bighead__v', text: daysLeft() })
+  const head = el('div', { class: 'budgethead' }, [
+    el('div', {}, [
+      el('div', { class: 'budgethead__label', text: 'Spent in ' + monthLabel(store.today) }),
+      el('div', { class: 'budgethead__row' }, [
+        el('div', { class: 'budgethead__v', text: fmt(spent, HOME_CURRENCY) }),
+        el('div', { class: 'budgethead__of', text: 'of ' + fmt(total, HOME_CURRENCY) })
+      ])
     ]),
-    el('div', { class: 'bignum' }, [
-      el('div', { class: 'bignum__v', text: fmt(spent, HOME_CURRENCY) }),
-      el('div', { class: 'bignum__of', text: '/ ' + fmt(total, HOME_CURRENCY) })
-    ]),
-    bar(p, p > 100 ? 'var(--danger)' : 'var(--accent)')
+    el('div', { class: 'pcttag', text: p + '%' })
+  ]);
+
+  const foot = el('div', { class: 'trackfoot' }, [
+    el('div', { text: daysLeftText() }),
+    el('div', { text: fmt(Math.max(0, total - spent), HOME_CURRENCY) + ' left' })
   ]);
 
   const rows = store.db.budgets.map(b => {
@@ -49,73 +55,75 @@ function budgetList() {
     const p = pct(used, b.limit);
     const over = used > b.limit;
 
-    return el('div', { class: 'card', style: { padding: '14px' } }, [
+    return el('div', { class: 'budget' }, [
       el('div', { class: 'budget__top' }, [
         dot(category.color),
         el('div', { class: 'budget__name ellip', text: category.name }),
         over
-          ? el('div', { class: 'tag-over', text: 'OVER ' + fmt(used - b.limit, HOME_CURRENCY) })
+          ? el('div', { class: 'tag-over' }, [
+              icon('alert', 10, { weight: 2.4 }),
+              'Over by ' + fmt(used - b.limit, HOME_CURRENCY)
+            ])
           : null,
         el('div', { class: 'budget__spent', text: fmt(used, HOME_CURRENCY) })
       ].filter(Boolean)),
       bar(p, over ? 'var(--danger)' : category.color, true),
       el('div', { class: 'budget__foot' }, [
-        el('div', { class: 'budget__pct', text: p + '% of ' + fmt(b.limit, HOME_CURRENCY) }),
+        el('div', { text: p + '% of ' + fmt(b.limit, HOME_CURRENCY) }),
         el('div', {
-          class: 'budget__left' + (over ? ' budget__left--over' : ''),
+          class: over ? 'budget__left--over' : '',
           text: over ? 'nothing left' : fmt(b.limit - used, HOME_CURRENCY) + ' left'
         })
       ])
     ]);
   });
 
-  return [header, el('div', { style: { display: 'flex', flexDirection: 'column', gap: '9px' } }, rows)];
+  return [head, bar(p, p > 100 ? 'var(--danger)' : 'var(--accent)'), foot, ...rows];
 }
 
 function goalList() {
-  const rows = store.db.goals.map(g => {
+  return store.db.goals.map(g => {
     const p = pct(g.current, g.target);
-    return el('div', { class: 'panel' }, [
+
+    // The ring is the progress: a conic sweep with the surface punched out.
+    const ring = el('div', {
+      class: 'ring',
+      style: { background: `conic-gradient(var(--accent) ${p}%, var(--soft) 0)` }
+    }, [el('div', { class: 'ring__hole', text: p + '%' })]);
+
+    const add = (label, amount, lime) => el('div', {
+      class: 'addbtn tappable' + (lime ? ' addbtn--lime' : ''),
+      onClick: () => store.addToGoal(g, amount)
+    }, [icon('plus', 11, { weight: 2.6 }), label]);
+
+    return el('div', { class: 'goal' }, [
       el('div', { class: 'goal__top' }, [
-        el('div', { style: { minWidth: '0' } }, [
-          el('div', { class: 'goal__name', text: g.name }),
+        ring,
+        el('div', { class: 'row__body' }, [
+          el('div', { class: 'goal__name ellip', text: g.name }),
           el('div', {
-            class: 'goal__deadline',
-            text: 'By ' + dayName(g.deadline) + ' ' + g.deadline.slice(0, 4)
+            class: 'row__meta',
+            text: 'By ' + dayName(g.deadline) + ' ' + g.deadline.slice(0, 4) + ' · ' +
+              fmt(Math.max(0, g.target - g.current), HOME_CURRENCY) + ' to go'
           })
         ]),
-        el('div', { class: 'goal__pct', text: p + '%' })
-      ]),
-      el('div', { class: 'bignum bignum--mid' }, [
-        el('div', { class: 'bignum__v', text: fmt(g.current, HOME_CURRENCY) }),
-        el('div', { class: 'bignum__of', text: 'of ' + fmt(g.target, HOME_CURRENCY) })
-      ]),
-      bar(p, 'var(--accent)'),
-      el('div', { class: 'goal__foot' }, [
-        el('div', {
-          class: 'goal__pace',
-          text: fmt(Math.max(0, g.target - g.current), HOME_CURRENCY) + ' to go'
-        }),
-        el('div', { class: 'goal__adds' }, [
-          el('div', {
-            class: 'addbtn tappable', text: '+1K',
-            onClick: () => store.addToGoal(g, 1000)
-          }),
-          el('div', {
-            class: 'addbtn addbtn--lime tappable', text: '+5K',
-            onClick: () => store.addToGoal(g, 5000)
-          })
+        el('div', { class: 'row__right' }, [
+          el('div', { class: 'goal__current', text: fmt(g.current, HOME_CURRENCY) }),
+          el('div', { class: 'row__sub', text: 'of ' + fmt(g.target, HOME_CURRENCY) })
         ])
+      ]),
+      el('div', { class: 'goal__foot' }, [
+        bar(p, 'var(--accent)', true),
+        add('1K', 1000, false),
+        add('5K', 5000, true)
       ])
     ]);
   });
-
-  return [el('div', { style: { display: 'flex', flexDirection: 'column', gap: '11px' } }, rows)];
 }
 
+const SEGMENTS = { goals: goalList, debts: renderDebts };
+
 export function renderBudgets() {
-  return [
-    segment(),
-    ...(store.ui.budgetSeg === 'goals' ? goalList() : budgetList())
-  ];
+  const seg = SEGMENTS[store.ui.budgetSeg] || budgetList;
+  return [tabs(), ...seg()];
 }

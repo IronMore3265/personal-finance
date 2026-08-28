@@ -65,10 +65,14 @@ export function pushIn(host, direction) {
 }
 
 /**
- * Charts animate their data. Bars are laid out at zero, then grown on the next
- * frame so the transition actually runs.
+ * Charts animate their data: bars grow from the baseline.
+ *
+ * The value is published as a custom property, and CSS both rests at it and
+ * animates up to it. That keeps the final size a matter of style rather than of
+ * JS timing - if the animation never runs (reduced motion, a throttled
+ * background tab, a frame that is never produced) the bar is still the right
+ * size, instead of stuck at zero.
  */
-export function grow(node, prop, value) {
-  if (reduced()) { node.style[prop] = value; return; }
-  requestAnimationFrame(() => requestAnimationFrame(() => { node.style[prop] = value; }));
+export function setTarget(node, value) {
+  node.style.setProperty('--target', value);
 }

@@ -3,9 +3,11 @@ node_modules/
 
 # Browser profile used by the screenshot script
 .chrome.tmp/
+.chrome*.tmp/
 
 # Temp, backup and capture artifacts
 *.tmp.html
+*.tmp.*
 *.bak
 shot-*.png
 
@@ -15,8 +17,33 @@ shot-*.png
 .DS_Store
 Thumbs.db
 
-# Android local config
+# Capacitor copies www/ in here on every sync
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+
+# Gradle build output and local config
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/
 android/local.properties
+*.apk
+*.aab
+*.keystore
 
 # Third-party design reference media (kept locally, not in git)
 *.mp4
+
+# Playwright run artifacts. The committed baselines under
+# tests/*-snapshots/ are deliberately kept; these are not.
+test-results/
+playwright-report/
+blob-report/
+docs/screens/verify/
+
+# Raw brand logo downloads and design canvas drafts (kept locally, not in git).
+# The trimmed, app-ready versions live in www/assets/brands/.
+*-Logo.wine.svg
+Rocket_mobile_banking_logo.svg
+*.dc.html

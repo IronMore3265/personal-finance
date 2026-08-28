@@ -3,7 +3,7 @@
   "appName": "Paisa",
   "webDir": "www",
   "android": {
-    "backgroundColor": "#f4f4f2",
+    "backgroundColor": "#ffffff",
     "allowMixedContent": false
   },
   "plugins": {
@@ -13,7 +13,7 @@
     "StatusBar": {
       "overlaysWebView": false,
       "style": "LIGHT",
-      "backgroundColor": "#f4f4f2"
+      "backgroundColor": "#ffffff"
     }
   }
 }

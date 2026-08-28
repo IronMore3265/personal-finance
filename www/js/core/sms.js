@@ -23,6 +23,23 @@ function senderMatches(rule, text, sender) {
   return rule.sender === 'CityBank' && /A\/C \*\*/i.test(text);
 }
 
+// Merchant names arrive SHOUTED ("paid to GRAMEENPHONE", "at SHWAPNO GULSHAN").
+// This has to run case-sensitively, which is why it is separate from the rule
+// regex - those are matched with /i so their keywords stay forgiving.
+const MERCHANT_PATTERNS = [
+  /\bpaid to ([A-Z]{2,}(?: [A-Z]{2,})*)/,
+  /\bat ([A-Z]{2,}(?: [A-Z]{2,})*)/,
+  /\bto ([A-Z]{2,}(?: [A-Z]{2,})*)/
+];
+
+function merchantFrom(text) {
+  for (const re of MERCHANT_PATTERNS) {
+    const m = text.match(re);
+    if (m) return m[1].trim();
+  }
+  return '';
+}
+
 function categoryFor(rule, merchant, text) {
   const haystack = (merchant + ' ' + text).toUpperCase();
   for (const entry of MERCHANT_MAP) {
@@ -32,13 +49,16 @@ function categoryFor(rule, merchant, text) {
 }
 
 /**
+ * @param {string} text    message body
+ * @param {Array}  rules   rule table, tried in order
+ * @param {string} [sender] sender address, when the platform gave us one
  * @returns {{ok:true, rule, amount, merchant, cat}|{ok:false}}
  */
-export function parseSms(text, rules) {
+export function parseSms(text, rules, sender) {
   if (!text || !text.trim()) return { ok: false };
 
   for (const rule of rules) {
-    if (!senderMatches(rule, text)) continue;
+    if (!senderMatches(rule, text, sender)) continue;
 
     let match;
     try {
@@ -51,15 +71,13 @@ export function parseSms(text, rules) {
     const amount = parseFloat(String(match[1]).replace(/,/g, ''));
     if (!isFinite(amount)) continue;
 
-    const merchant = (match[2] || '').trim()
-      || (text.match(/at ([A-Z][A-Z ]{3,})/) || [])[1]
-      || '';
+    const merchant = merchantFrom(text);
 
     return {
       ok: true,
       rule,
       amount,
-      merchant: merchant.trim(),
+      merchant,
       cat: categoryFor(rule, merchant, text)
     };
   }

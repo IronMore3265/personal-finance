@@ -1,11 +1,12 @@
-// Activity. Search, filter chips, a black running-total bar, then the ledger
-// grouped by day. Each day carries its own net so you can scan the month.
+// Activity. Search, filter chips, a count/total strip, then the ledger grouped
+// by day. Each day carries its own net so you can scan the month.
 
 import { el } from '../core/dom.js';
-import { fmt, signed } from '../core/format.js';
+import { signed } from '../core/format.js';
 import { store } from '../core/store.js';
+import { icon } from '../ui/icons.js';
 import { chip, txnRow, groupByDay } from '../ui/components.js';
-import { TODAY } from '../data/seed.js';
+
 
 const HOME_CURRENCY = 'BDT';
 
@@ -21,19 +22,18 @@ function searchRow() {
   // by matching on this id, so the field does not drop the keyboard.
   const input = el('input', {
     id: 'search-input',
-    class: 'search',
+    class: 'search__input',
     value: store.ui.query,
-    placeholder: 'SEARCH NOTE / CATEGORY / ACCOUNT',
+    placeholder: 'Search notes, categories',
     onInput: (e) => store.set({ query: e.target.value })
   });
 
   return el('div', { class: 'searchrow' }, [
-    input,
+    el('div', { class: 'search' }, [icon('search', 16, { weight: 1.8 }), input]),
     el('div', {
-      class: 'smsbtn tappable',
-      text: 'Paste SMS',
+      class: 'roundbtn roundbtn--lime roundbtn--big tappable',
       onClick: () => store.set({ sheet: 'sms', parse: null })
-    })
+    }, [icon('message', 19)])
   ]);
 }
 
@@ -42,7 +42,7 @@ export function renderActivity() {
   const sum = list.reduce(
     (s, t) => s + (t.type === 'income' ? store.homeVal(t) : -store.homeVal(t)), 0
   );
-  const groups = groupByDay(list, TODAY);
+  const groups = groupByDay(list, store.today);
 
   return [
     searchRow(),
@@ -64,10 +64,9 @@ export function renderActivity() {
     ...groups.map(g => el('div', { class: 'daygroup' }, [
       el('div', { class: 'daygroup__head' }, [
         el('div', { class: 'daygroup__label', text: g.label }),
-        el('div', { class: 'daygroup__fill' }),
         el('div', { class: 'daygroup__total', text: signed(g.sum, HOME_CURRENCY) })
       ]),
-      el('div', { class: 'panel panel--flush' }, g.items.map(txnRow))
+      ...g.items.map(txnRow)
     ])),
 
     list.length === 0
@@ -75,5 +74,3 @@ export function renderActivity() {
       : null
   ].filter(Boolean);
 }
-
-

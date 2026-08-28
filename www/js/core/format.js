@@ -1,8 +1,20 @@
-import { SYM, TODAY } from '../data/seed.js';
+import { SYM } from '../data/seed.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 export const MINUS = '−'; // true minus sign, not a hyphen
+
+const pad = (n) => String(n).padStart(2, '0');
+
+/**
+ * A Date as a calendar date string, read off the local clock.
+ *
+ * Deliberately not `toISOString().slice(0, 10)`: that is UTC, so east of
+ * Greenwich it names tomorrow for most of the evening - a 9pm dinner in Dhaka
+ * would file itself under the next day.
+ */
+export const localDate = (d = new Date()) =>
+  d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 
 /** Currency. Whole thousands lose their decimals; small change keeps two. */
 export function fmt(n, cur = 'BDT') {
@@ -28,9 +40,9 @@ export function dayName(d) {
   return dt.getDate() + ' ' + MONTHS[dt.getMonth()];
 }
 
-export function dueLabel(d) {
+export function dueLabel(d, today = localDate()) {
   const days = Math.round(
-    (new Date(d + 'T00:00:00') - new Date(TODAY + 'T00:00:00')) / 86400000
+    (new Date(d + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000
   );
   if (days < 0) return 'Overdue';
   if (days === 0) return 'Due today';
@@ -45,3 +57,20 @@ export function compact(n, cur = 'BDT') {
   if (n >= 10000) return s + Math.round(n / 1000) + 'k';
   return fmt(n, cur);
 }
+
+/* Date helpers used by the month-to-date comparisons on Home and Reports. */
+
+export const monthStart = (d) => d.slice(0, 8) + '01';
+
+export function dayBefore(d) {
+  const dt = new Date(d + 'T00:00:00');
+  dt.setDate(dt.getDate() - 1);
+  return localDate(dt);
+}
+
+export const MONTH_NAME = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+export const monthLabel = (d) => MONTH_NAME[Number(d.slice(5, 7)) - 1];
