@@ -16,9 +16,10 @@ import { icon } from '../ui/icons.js';
 import { accountChip, section, sectionMeta } from '../ui/components.js';
 import { TYPE_LABEL } from '../data/seed.js';
 
-// .row, .tappable
+// .row, .tappable - and, like ROW_TAP in ui/styles.js, no `overflow-hidden`:
+// it clipped the account chip's outset colour ring against the row's edge.
 const ROW = 'flex items-center gap-3 py-[13px] border-b border-line relative '
-  + 'overflow-hidden cursor-pointer transition-transform duration-[180ms] '
+  + 'cursor-pointer transition-transform duration-[180ms] '
   + 'ease-move active:scale-[.985]';
 
 function row(a) {

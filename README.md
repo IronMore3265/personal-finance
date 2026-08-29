@@ -21,9 +21,10 @@ v4 is a re-cut of the same app, not new features:
   hairline. There is a maximum of **one dark card per screen** — the primary
   account on Home. The card stack, the panel shadows and the horizontal account
   strip are gone.
-- **Icons everywhere.** Stroke icons in the nav, the header, row actions and
-  settings rows; account and transaction rows carry a tinted glyph chip. No more
-  text-only affordances (`Details`, `All`, `Mark paid` as bare words).
+- **Icons everywhere.** Stroke icons in the nav, row actions and settings rows;
+  account and transaction rows carry a tinted glyph chip. No more text-only
+  affordances (`Details`, `All`, `Mark paid` as bare words). The header is the
+  exception - it carries a title and nothing else.
 - **A different lead per screen.** Home opens on a centred balance, Activity on
   search, Budgets on thin-line rows, Reports on a chart canvas, Settings on a
   grouped list — so the screens stop reading as the same screen four times.
@@ -69,7 +70,7 @@ www/
       repo.js         storage: SQLite driver | localStorage driver
       sms.js          SMS rule engine
       format.js       currency, dates, percentages
-      motion.js       ripple, stagger, push, bar growth
+      motion.js       stagger, push, zoom, bar growth
       exporter.js     CSV export and database backup
       dom.js          element builder
     data/
@@ -85,6 +86,7 @@ www/
       palette.js      the colour swatches a user can pick from
       brands.js       the six payment-network logos
       components.js   rows, chips, tabs, bars, section headers
+      datepicker.js   the floating calendar: days, months, years
   core/calc.js        the keypad's expression evaluator
 scripts/
   gen-icons.mjs       regenerates lucide-paths.js from lucide-static
@@ -107,14 +109,19 @@ inherit `currentColor` and flip with the theme. Note that the prototype is React
 and writes `strokeWidth`, which the DOM ignores — the real attribute is
 `stroke-width`, and getting that wrong renders every icon as a hairline.
 
-**Rendering.** One store, plain DOM, no framework — but not one render pass any
-more. A change announces which regions of the shell it can affect
-(`KEY_REGIONS` in `store.js`) and only those are rebuilt. A keypad tap patches
-three nodes rather than reconstructing the whole sheet; a search keystroke
-rebuilds the list and leaves the header, nav and sheet alone. Scroll position
-(screen *and* sheet), focus and caret are carried across so typing and
-scrolling survive a render. Balances are memoised on a ledger revision, because
-Home draws nine sparkline samples per account and each one is a full scan.
+**Rendering.** One store, plain DOM, no framework — and nothing is rebuilt that
+did not change. A change announces which regions of the shell it can affect
+(`KEY_REGIONS` in `store.js`); inside a region, the screen still describes the
+whole of itself and `patch()` in `core/dom.js` writes only the differences into
+the tree that is already on screen. So a search keystroke rewrites the rows that
+moved and leaves the field the caret is in untouched, a filter tap does not
+disturb the scroll, and a tap in the add sheet does not reset the sideways chip
+rows or replay the slide-up. A keypad tap is faster still: three nodes, written
+directly. The only two passes that build from scratch are the two meant to be
+seen arriving — a different screen, and a different sheet — which is where the
+push, the stagger and the slide-up live. Balances are memoised on a ledger
+revision, because Home draws nine sparkline samples per account and each one is
+a full scan.
 
 **Storage writes.** `repo` now covers the whole model: transactions (including
 update and delete), line items, categories, accounts, debts and recurring
@@ -191,8 +198,13 @@ real data, so it uses it:
   both are legible in the prototype's light theme and neither is in its dark one.
   `--accentBlob` and `--cardBg` carry the light values unchanged and darken /
   lift respectively for dark mode.
-- **The header action does the real export.** In the prototype the share icon
-  toasts "Export this view"; here it runs the CSV export the app already ships.
+- **The header is the title alone.** The prototype drew a back arrow on the left
+  and a share icon on the right. Both are gone. Every screen is one tap away on
+  the nav bar, so the arrow was a second route to somewhere you were never far
+  from, sitting beside a title that already said where you were; the share icon
+  read as "export this view" and duplicated the Export row in Settings, which is
+  where you go looking for it. Export still runs the real CSV writer, from
+  Settings.
 - **Reports → Accounts shows the converted value** for a foreign account. The
   share percentage is computed from the home-currency value, so `$2,460` next to
   `56% of total` needs the `≈ ৳300,120` line to make sense. This does not decide

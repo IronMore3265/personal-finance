@@ -6,7 +6,8 @@
 
 import { el } from '../core/dom.js';
 import {
-  ROW_TAP, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT, ROW_SUB, ELLIP, TAP, MICROLABEL
+  ROW_TAP, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT, ROW_SUB, ELLIP, TAP, PRESS,
+  MICROLABEL
 } from './styles.js';
 import { fmt, dayName, MINUS } from '../core/format.js';
 import { setTarget } from '../core/motion.js';
@@ -184,10 +185,12 @@ export function sparkPoints(values, w = 52, h = 20, pad = 2.5) {
 /**
  * One transaction.
  *
- * Direction is carried by colour: money in is green, money out is red. That
- * replaces the earlier rule of green for income and plain ink for expense,
- * which left the two sides of the ledger looking alike in a long list. Lime is
- * still never used for data - it marks actions only.
+ * Direction is carried by the sign, not by colour: the amount is plain ink, so
+ * it reads black in light and white in dark like every other number in a row.
+ * Colouring each line green or red turned a day's list into a stripe of alarm
+ * and made the one figure that is actually a verdict - the day's net, and the
+ * period total above it - impossible to pick out. Those two keep the colour;
+ * the lines that feed them no longer compete with it.
  */
 export function txnRow(t) {
   const category = store.cat(t.cat);
@@ -224,7 +227,7 @@ export function txnRow(t) {
     ]),
     el('div', { class: ROW_RIGHT }, [
       el('div', {
-        class: ROW_AMT + (isIncome ? ' text-pos' : ' text-danger'),
+        class: ROW_AMT,
         text: (isIncome ? '+' : MINUS) + fmt(t.amount, t.currency)
       }),
       isFx
@@ -281,10 +284,24 @@ export function tab(label, active, onClick) {
   });
 }
 
-export function toggle(on, onClick) {
+/**
+ * A switch.
+ *
+ * `small` is the inline variant: a 34x20 track sized to sit beside a 10px
+ * micro-label rather than to anchor a settings row. It is the same control,
+ * not a different one - both tracks keep the 2:1 ratio and the same colours.
+ */
+export function toggle(on, onClick, small = false) {
+  const track = small
+    ? 'w-[34px] h-5 p-0.5'
+    : 'w-[50px] h-[30px] p-[3px]';
+  const knob = small
+    ? 'w-4 h-4' + (on ? ' translate-x-3.5' : ' translate-x-0')
+    : 'w-6 h-6' + (on ? ' translate-x-5' : ' translate-x-0');
+
   return el('div', {
-    class: 'flex-none w-[50px] h-[30px] rounded-pill p-[3px] flex items-center '
-      + 'cursor-pointer ' + (on ? 'bg-accent' : 'bg-soft'),
+    class: 'flex-none rounded-pill flex items-center cursor-pointer '
+      + track + ' ' + (on ? 'bg-accent' : 'bg-soft'),
     onClick
   }, [
     el('div', {
@@ -292,9 +309,30 @@ export function toggle(on, onClick) {
       // colour that does not flip between themes, so a knob painted in --ink
       // turns near-white on it in dark mode and all but disappears. Off the
       // lime, --ink is right and inverts with the track as it should.
-      class: 'w-6 h-6 rounded-full transition-transform duration-[180ms] ease-move '
-        + (on ? 'bg-accent-ink translate-x-5' : 'bg-ink translate-x-0')
+      class: 'rounded-full transition-transform duration-[180ms] ease-move '
+        + knob + ' ' + (on ? 'bg-accent-ink' : 'bg-ink')
     })
+  ]);
+}
+
+/**
+ * A micro-label with a small switch beside it, as one tappable unit.
+ *
+ * Wears the chip testid and data-on because it replaced a filter pill and is
+ * still the same thing to a caller: a labelled on/off.
+ */
+export function toggleLabel(label, on, onClick) {
+  return el('div', {
+    class: 'inline-flex items-center gap-[9px] ' + PRESS,
+    dataset: { testid: 'chip', on: on ? '1' : '0' },
+    onClick
+  }, [
+    el('div', {
+      class: 'font-ui font-bold text-[10px]/[1] tracking-[.14em] uppercase '
+        + 'text-ink3 normal-nums',
+      text: label
+    }),
+    toggle(on, null, true)
   ]);
 }
 

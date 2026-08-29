@@ -6,11 +6,12 @@ import { fmt, signed, dueLabel, dayBefore, monthStart, MINUS } from '../core/for
 import { store } from '../core/store.js';
 import { icon, sparkline } from '../ui/icons.js';
 import {
-  txnRow, iconChip, accountChip, sparkPoints,
+  txnRow, iconChip, accountChip, sparkPoints, toggleLabel,
   section, sectionMeta, sectionLink
 } from '../ui/components.js';
 import {
-  ROW, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT, ROW_SUB, ELLIP, TAP
+  ROW, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT, ROW_AMT_BARE, ROW_SUB_BARE,
+  ELLIP, TAP
 } from '../ui/styles.js';
 
 
@@ -66,9 +67,12 @@ function primaryCard() {
         text: fmt(balance, account.currency)
       }),
       el('div', {
-        class: 'font-ui font-bold text-[12px]/[1] text-[#c6ee6a] normal-nums',
-        text: (change >= 0 ? '+' : MINUS) + Math.abs(percent).toFixed(2) + '% · ' +
-          signed(change, account.currency)
+        // Flat is not a gain. A month that has not moved reads in the card's
+        // own white rather than borrowing the lime that means "up".
+        class: 'font-ui font-bold text-[12px]/[1] normal-nums '
+          + (change === 0 ? 'text-white/66' : 'text-[#c6ee6a]'),
+        text: (change === 0 ? '' : change > 0 ? '+' : MINUS)
+          + Math.abs(percent).toFixed(2) + '% · ' + signed(change, account.currency)
       })
     ]),
     el('div', { class: 'flex gap-[9px] mt-[18px]' }, [
@@ -90,6 +94,12 @@ function accountRows() {
     const delta = store.accountDelta(a.id);
     const history = store.accountHistory(a.id);
 
+    // An account that has not moved is neither a gain nor a loss, so it gets
+    // neither colour - green on a flat 0.0% was reading as good news.
+    const tone = delta.flat ? 'text-ink' : delta.up ? 'text-pos' : 'text-danger';
+    const stroke = delta.flat ? 'var(--ink3)' : delta.up ? 'var(--pos)' : 'var(--danger)';
+    const sign = delta.flat ? '' : delta.up ? '+' : MINUS;
+
     return el('div', { class: ROW, dataset: { testid: 'row' } }, [
       accountChip(a),
       el('div', { class: ROW_BODY }, [
@@ -99,15 +109,16 @@ function accountRows() {
           text: a.typeLabel + (a.currency === HOME_CURRENCY ? '' : ' · ' + a.currency)
         })
       ]),
-      sparkline(sparkPoints(history), delta.up ? 'var(--pos)' : 'var(--danger)'),
+      sparkline(sparkPoints(history), stroke),
       el('div', { class: ROW_RIGHT + ' min-w-[74px]' }, [
         el('div', { class: ROW_AMT, text: fmt(a.balance, a.currency) }),
         el('div', {
           // Bolder and a shade larger than a plain sub-line, which is what the
-          // --pos / --neg modifiers used to add on top of the colour.
-          class: ROW_SUB + ' font-semibold text-[11px] '
-            + (delta.up ? 'text-pos' : 'text-danger'),
-          text: (delta.up ? '+' : MINUS) + Math.abs(delta.percent).toFixed(1) + '%'
+          // --pos / --neg modifiers used to add on top of the colour. Built from
+          // ROW_SUB_BARE rather than ROW_SUB: see the note there - a text-danger
+          // added on top of ROW_SUB's text-ink3 loses and the drop renders grey.
+          class: ROW_SUB_BARE + ' font-semibold text-[11px] ' + tone,
+          text: sign + Math.abs(delta.percent).toFixed(1) + '%'
         })
       ])
     ]);
@@ -135,7 +146,7 @@ function recurringRows() {
         el('div', { class: ROW_META, text: meta })
       ]),
       el('div', {
-        class: ROW_AMT + ' flex-none text-danger',
+        class: ROW_AMT_BARE + ' flex-none text-danger',
         text: fmt(b.amount, HOME_CURRENCY)
       }),
       // Paying is a single lime tick, not the words "Mark paid".
@@ -159,13 +170,19 @@ function recurringRows() {
   });
 }
 
-/** Money lent and money owed, as one line each. Only shown when there is any. */
-function debtSummary() {
-  const { owedToMe, iOwe } = store.debtTotals();
-  if (!owedToMe && !iOwe) return null;
-
-  const cell = (label, value, tone) => el('div', {
-    class: 'flex-1 min-w-0 ' + TAP,
+/**
+ * Money lent and money owed, as one line each.
+ *
+ * Both totals come from the caller, which has already worked out whether there
+ * is any lending to show at all - the same test gates the toggle above it.
+ */
+function debtSummary(owedToMe, iOwe) {
+  // The two sides are mirrored, the way the Debts tab heads its own totals:
+  // what is coming to you reads in from the left edge, what is going out reads
+  // in from the right. Left-aligning both left the second column floating in
+  // the middle of the strip with dead space after it.
+  const cell = (label, value, tone, align) => el('div', {
+    class: 'flex-1 min-w-0 ' + align + ' ' + TAP,
     onClick: () => store.set({ budgetSeg: 'debts', screen: 'budgets' })
   }, [
     el('div', {
@@ -181,16 +198,24 @@ function debtSummary() {
   ]);
 
   return el('div', {
-    class: 'flex gap-2.5 py-[14px] border-t border-b border-line mb-1'
+    class: 'flex gap-2.5 py-[14px] border-t border-b border-line mt-[15px]'
   }, [
-    cell('Owed to you', owedToMe, 'text-pos'),
-    cell('You owe', iOwe, 'text-danger')
+    // Zero on one side is not a positive or a negative, it is nothing owed -
+    // so it stays plain ink and lets the side that does have a number carry
+    // the colour.
+    cell('Owed to you', owedToMe, owedToMe ? 'text-pos' : 'text-ink', 'text-left'),
+    cell('You owe', iOwe, iOwe ? 'text-danger' : 'text-ink', 'text-right')
   ]);
 }
 
 export function renderHome() {
   const totals = store.monthTotals();
   const up = totals.net >= 0;
+
+  // No lending either way means the toggle has nothing to say - and the strip
+  // below it is hidden on the same test.
+  const { owedToMe, iOwe } = store.debtTotals();
+  const hasDebt = !!(owedToMe || iOwe);
 
   return [
     el('div', { class: 'text-center pt-[14px] pb-1' }, [
@@ -203,7 +228,7 @@ export function renderHome() {
         class: 'font-ui font-extrabold text-[44px]/[1] text-ink tracking-[-.045em] '
           + 'mt-[14px] whitespace-nowrap normal-nums',
         dataset: { testid: 'balance-value' },
-        text: fmt(store.netWorth(), HOME_CURRENCY)
+        text: fmt(store.homeBalance(), HOME_CURRENCY)
       }),
       el('div', {
         class: 'flex items-center justify-center gap-1.5 mt-[11px] font-ui '
@@ -214,15 +239,23 @@ export function renderHome() {
         el('div', {
           text: signed(totals.net, HOME_CURRENCY) + ' this month'
         })
-      ])
+      ]),
+      // A switch, not a filter pill. It does not narrow a list the way the
+      // chips on Activity do - it changes what the number above it counts - and
+      // at pill size it read as the loudest control on the screen. Scaled to
+      // the micro-label it sits under instead.
+      hasDebt ? el('div', { class: 'flex justify-center mt-[15px]' }, [
+        toggleLabel('Include debt', store.ui.includeDebt, () => store.toggleIncludeDebt())
+      ]) : null
     ]),
+
+    // Directly under the number it qualifies, not buried below the accounts.
+    hasDebt ? debtSummary(owedToMe, iOwe) : null,
 
     primaryCard(),
 
     section('Accounts', sectionMeta(store.db.accounts.length + ' accounts')),
     ...accountRows(),
-
-    debtSummary(),
 
     store.dueSoon().length ? section('Due soon') : null,
     ...recurringRows(),

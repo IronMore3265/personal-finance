@@ -37,6 +37,7 @@
 
   /* Semantic. Green is direction, lime is affordance - never swapped. */
   --pos: oklch(0.62 0.15 140);
+  --posSoft: oklch(0.95 0.035 140);
   --danger: oklch(0.55 0.19 25);
   --dangerSoft: oklch(0.95 0.035 25);
 
@@ -51,9 +52,12 @@
   --ui: 'Manrope', 'Helvetica Neue', Helvetica, sans-serif;
   --code: 'SFMono-Regular', Menlo, Consolas, monospace;
 
-  /* Elevation. Only two things float in v4: the FAB and the sheet. */
+  /* Elevation. Three things float: the FAB, the sheet, and the date dialog. */
   --sh-fab: 0 12px 26px rgba(17, 18, 16, .24);
   --sh-sheet: 0 -18px 50px rgba(17, 18, 16, .16);
+  /* Three, now: the date picker floats clear of the sheet it belongs to, so it
+     needs a shadow that reads from every side rather than only from above. */
+  --sh-dialog: 0 24px 60px rgba(17, 18, 16, .28);
 
   /* Radii */
   --r-chip: 12px;      /* glyph chip, settings icon tile */
@@ -100,11 +104,13 @@
   --accentBlob: var(--accentSoft);
 
   --pos: oklch(0.78 0.17 140);
+  --posSoft: oklch(0.30 0.09 140);
   --danger: oklch(0.68 0.19 25);
   --dangerSoft: oklch(0.30 0.09 25);
 
   --sh-fab: 0 12px 26px rgba(0, 0, 0, .5);
   --sh-sheet: 0 -18px 50px rgba(0, 0, 0, .45);
+  --sh-dialog: 0 24px 60px rgba(0, 0, 0, .6);
 }
 
 @media (prefers-reduced-motion: reduce) {

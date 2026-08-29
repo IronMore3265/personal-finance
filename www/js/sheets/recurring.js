@@ -9,7 +9,7 @@ import { el } from '../core/dom.js';
 import { store } from '../core/store.js';
 import { chip, fieldLabel, toggle } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
-import { datePicker, dateLabel } from '../ui/datepicker.js';
+import { dateLabel } from '../ui/datepicker.js';
 import { accountPicker, categoryPicker } from './pickers.js';
 import {
   CHIPROW_FLUSH, TAP, SHEET, SHEET_BODY, SHEET_FOOT, SHEET_TITLE,
@@ -121,18 +121,6 @@ export function renderRecurringSheet() {
     ])
   ]);
 
-  if (store.ui.recDateOpen) {
-    return sheetWith(r, body, el('div', {
-      class: SHEET_FOOT,
-      dataset: { testid: 'sheet-foot', foot: 'panel' }
-    }, [
-      panelHead('Next due', () => store.set({ recDateOpen: false })),
-      // Silent: the picker owns which month it is showing.
-      datePicker(r.nextDue || r.due || store.today, store.today,
-        (next) => { patchSilently({ nextDue: next, due: r.due || next }); })
-    ]));
-  }
-
   const foot = el('div', { class: SHEET_FOOT }, [
     el('div', {
       class: SAVEBTN + ' bg-accent text-accent-ink ' + TAP,
@@ -183,25 +171,30 @@ function sheetWith(r, body, foot) {
   ]);
 }
 
-/** A Done bar over the date panel, matching the add sheet's. */
-function panelHead(label, onDone) {
-  return el('div', { class: 'flex items-center justify-between pt-0 px-0.5 pb-2.5' }, [
-    el('div', {
-      class: 'font-ui font-semibold text-[10px] tracking-[.12em] uppercase '
-        + 'text-ink3 normal-nums',
-      text: label
-    }),
-    el('div', {
-      class: 'py-[7px] px-[15px] rounded-pill bg-soft text-ink font-ui font-bold '
-        + 'text-[11.5px] tracking-[.04em] normal-nums ' + TAP,
-      dataset: { testid: 'panelhead-done' },
-      text: 'Done',
-      onClick: onDone
-    })
-  ]);
-}
-
-/** Write straight to the draft: a re-render would rebuild the open picker. */
-function patchSilently(p) {
-  Object.assign(store.ui.editRecurring, p);
+/**
+ * What the floating date dialog shows while `ui.recDateOpen` is set.
+ *
+ * The shell draws it - it lives in the overlay layer, above the sheet - but
+ * what goes in it is this sheet's business. The write is straight to the draft
+ * rather than through patch(): a render would rebuild the sheet under an open
+ * dialog for a chip label that is only visible once the dialog has gone.
+ *
+ * `due` is the date the schedule was first anchored to and `nextDue` is the
+ * occurrence in front of you; a rule that has never had one takes this date as
+ * both.
+ */
+export function recurringDateSpec() {
+  if (!store.ui.recDateOpen) return null;
+  const r = store.ui.editRecurring;
+  return {
+    key: 'recurring',
+    title: 'Next due',
+    value: r.nextDue || r.due || store.today,
+    onPick: (next) => {
+      const draft = store.ui.editRecurring;
+      draft.nextDue = next;
+      if (!draft.due) draft.due = next;
+    },
+    onClose: () => store.set({ recDateOpen: false })
+  };
 }

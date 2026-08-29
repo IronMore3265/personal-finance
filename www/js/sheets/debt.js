@@ -9,7 +9,7 @@ import { fmt } from '../core/format.js';
 import { store } from '../core/store.js';
 import { chip, fieldLabel, accountChip } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
-import { datePicker, dateLabel } from '../ui/datepicker.js';
+import { dateLabel } from '../ui/datepicker.js';
 import {
   CHIPROW_FLUSH, TAP, SHEET, SHEET_HEAD, SHEET_BODY, SHEET_FOOT, SHEET_TITLE,
   SHEET_ICON, SHEET_LEDE, SAVEBTN, DELBTN_WIDE, FIELD, MINILABEL
@@ -117,18 +117,6 @@ export function renderDebtSheet() {
     settleBlock(d)
   ].filter(Boolean));
 
-  if (store.ui.debtDateOpen) {
-    return sheetWith(d, body, el('div', {
-      class: SHEET_FOOT,
-      dataset: { testid: 'sheet-foot', foot: 'panel' }
-    }, [
-      panelHead('Due date', () => store.set({ debtDateOpen: false })),
-      // Silent: the picker owns which month it is showing.
-      datePicker(d.due || store.today, store.today,
-        (next) => { store.ui.editDebt.due = next; })
-    ]));
-  }
-
   const foot = el('div', { class: SHEET_FOOT }, [
     el('div', {
       class: SAVEBTN + ' bg-accent text-accent-ink ' + TAP,
@@ -180,20 +168,21 @@ function sheetWith(d, body, foot) {
   ]);
 }
 
-/** A Done bar over the date panel, matching the add sheet's. */
-function panelHead(label, onDone) {
-  return el('div', { class: 'flex items-center justify-between pt-0 px-0.5 pb-2.5' }, [
-    el('div', {
-      class: 'font-ui font-semibold text-[10px] tracking-[.12em] uppercase '
-        + 'text-ink3 normal-nums',
-      text: label
-    }),
-    el('div', {
-      class: 'py-[7px] px-[15px] rounded-pill bg-soft text-ink font-ui font-bold '
-        + 'text-[11.5px] tracking-[.04em] normal-nums ' + TAP,
-      dataset: { testid: 'panelhead-done' },
-      text: 'Done',
-      onClick: onDone
-    })
-  ]);
+/**
+ * What the floating date dialog shows while `ui.debtDateOpen` is set.
+ *
+ * The shell draws it - it lives in the overlay layer, above the sheet - but
+ * what goes in it is this sheet's business. The write is straight to the draft
+ * rather than through patch(): a render would rebuild the sheet under an open
+ * dialog for a chip label that is only visible once the dialog has gone.
+ */
+export function debtDateSpec() {
+  if (!store.ui.debtDateOpen) return null;
+  return {
+    key: 'debt',
+    title: 'Due date',
+    value: store.ui.editDebt.due || store.today,
+    onPick: (next) => { store.ui.editDebt.due = next; },
+    onClose: () => store.set({ debtDateOpen: false })
+  };
 }
