@@ -95,7 +95,7 @@ export function iconChip(name, tint, size = 36) {
   return el('div', {
     class: CHIPGLYPH + ' bg-ink text-bg',
     dataset: { testid: 'chipglyph', chip: 'mono' },
-    style: { ...chipBox(size), boxShadow: '0 0 0 ' + ringWidth(size) + 'px ' + tint }
+    style: { ...chipBox(size), outline: ringWidth(size) + 'px solid ' + tint }
   }, [icon(name, glyphSize(size), { weight: 1.9 })]);
 }
 
@@ -229,7 +229,7 @@ export function txnRow(t) {
       }),
       isFx
         ? el('div', {
-            class: ROW_SUB,
+            class: ROW_SUB + ' text-ink3',
             text: '= ' + fmt(store.conv(t), account.currency) + ' @ ' + t.rate
           })
         : null

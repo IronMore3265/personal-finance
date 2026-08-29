@@ -1,106 +1,155 @@
-// The app's own date picker: a month grid you tap.
+// Date picker: a centered modal dialog with a month grid.
 //
-// It replaces two things that disagreed with each other. The add sheet had a
-// scroll wheel, which is a good iOS control but a poor answer to "the 3rd" -
-// you cannot aim at a date you can see, you have to spin past it. The debt and
-// recurring sheets had <input type="date">, which opens the platform's Material
-// dialog: a teal card in the middle of a lime-and-ink app, in the OS's shape
-// rather than this one's. Now all three open this.
-//
-// Motion follows the app's own patterns rather than inventing new ones: the
-// grid pushes in from the direction of travel with pushIn(), the same helper
-// the screens use, so stepping through months reads like stepping through
-// tabs.
+// Opens as a popup over everything. Tapping a day fires the callback and
+// auto-closes. Tapping the month-year label switches to a 4×3 month grid
+// with year navigation; picking a month returns to the day grid.
 
 import { el } from '../core/dom.js';
 import { pushIn } from '../core/motion.js';
+import { TAP } from './styles.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
   'August', 'September', 'October', 'November', 'December'];
-// Monday-first: the week people here plan around, and it keeps the weekend pair
-// together at the end where it reads as one block.
 const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 const pad2 = (n) => String(n).padStart(2, '0');
 
 export const isoDate = (y, m, d) => y + '-' + pad2(m + 1) + '-' + pad2(d);
-
-/** Days in a given month, so February stops at 28 or 29. */
 export const daysIn = (y, m) => new Date(y, m + 1, 0).getDate();
 
-/** Parse 'YYYY-MM-DD' into the three numbers the grid runs on. */
 function parts(value) {
   const [y, m, d] = String(value).split('-').map(Number);
   return { y, m: m - 1, d };
 }
 
-/** '28 Aug 2026', for the chip that opens the picker. */
 export function dateLabel(value) {
   const { y, m, d } = parts(value);
   return d + ' ' + MONTHS[m] + ' ' + y;
 }
 
-/** Monday-first index of the 1st of a month: 0 for Monday, 6 for Sunday. */
 function leadingBlanks(y, m) {
   return (new Date(y, m, 1).getDay() + 6) % 7;
 }
 
-/*
- * A fixed row height, not aspect-square. Square cells at this width come out
- * 49px, which makes six rows plus a header 343px - taller than the panel, so
- * the last week ran off the bottom of the screen.
- */
 const CELL = 'h-8 grid place-items-center rounded-chip font-ui font-semibold '
   + 'text-[13px] normal-nums cursor-pointer transition-colors duration-[180ms] ease-move';
 
-const NAV = 'flex-none w-8 h-8 rounded-full bg-soft text-ink grid place-items-center '
+const MONTH_CELL = 'h-10 grid place-items-center rounded-chip font-ui font-semibold '
+  + 'text-[13px] normal-nums cursor-pointer transition-colors duration-[180ms] ease-move';
+
+const NAV_BTN = 'flex-none w-8 h-8 rounded-full bg-soft text-ink grid place-items-center '
   + 'cursor-pointer';
 
-/**
- * A month grid. `onPick` fires with an ISO date every time a day is tapped.
- *
- * @param {string} value    the selected date, 'YYYY-MM-DD'
- * @param {string} today    today's date, for the outline
- * @param {(iso: string) => void} onPick
- */
-export function datePicker(value, today, onPick) {
-  const selected = parts(value);
-  // What the grid is showing, which is not the selection once you page away.
-  let view = { y: selected.y, m: selected.m };
+function chevron(left) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('width', 15);
+  svg.setAttribute('height', 15);
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', left ? 'M15 18l-6-6 6-6' : 'M9 18l6-6-6-6');
+  path.setAttribute('stroke', 'currentColor');
+  path.setAttribute('stroke-width', 2.2);
+  path.setAttribute('stroke-linecap', 'round');
+  path.setAttribute('stroke-linejoin', 'round');
+  svg.appendChild(path);
+  return svg;
+}
 
-  const root = el('div', { dataset: { testid: 'datepicker' } });
+/**
+ * Opens a date picker as a centered modal dialog.
+ * Selecting a day fires `onPick(iso)` and auto-closes.
+ * Tapping the backdrop also closes (without picking).
+ */
+export function openDatePicker(value, today, onPick) {
+  const selected = parts(value);
+  let view = { y: selected.y, m: selected.m };
+  let mode = 'days'; // 'days' or 'months'
+
   const head = el('div', { class: 'flex items-center justify-between mb-2' });
-  const grid = el('div', {});
+  const body = el('div', {});
+
+  const card = el('div', {
+    class: 'bg-surface rounded-card p-5 w-[310px] max-w-[90vw] shadow-[var(--sh-sheet)]',
+    dataset: { testid: 'datepicker' },
+    onClick: (e) => e.stopPropagation()
+  }, [head, body]);
+
+  const backdrop = el('div', {
+    class: 'absolute inset-0 z-50 flex items-center justify-center',
+    style: { background: 'rgba(0,0,0,.35)' },
+    onClick: close
+  }, [card]);
+
+  const app = document.getElementById('app');
+  app.appendChild(backdrop);
+
+  function close() {
+    backdrop.remove();
+  }
 
   const step = (by) => {
-    const next = view.m + by;
-    view = { y: view.y + Math.floor(next / 12), m: ((next % 12) + 12) % 12 };
+    if (mode === 'months') {
+      view = { y: view.y + by, m: view.m };
+    } else {
+      const next = view.m + by;
+      view = { y: view.y + Math.floor(next / 12), m: ((next % 12) + 12) % 12 };
+    }
     draw(by);
   };
 
   function drawHead() {
+    const label = mode === 'months'
+      ? String(view.y)
+      : MONTHS_LONG[view.m] + ' ' + view.y;
+
     head.replaceChildren(
       el('div', {
-        class: NAV,
+        class: NAV_BTN,
         dataset: { testid: 'cal-prev' },
         onClick: () => step(-1)
       }, [chevron(true)]),
       el('div', {
-        class: 'font-ui font-bold text-[13px] text-ink normal-nums',
+        class: 'font-ui font-bold text-[13px] text-ink normal-nums cursor-pointer '
+          + 'py-1 px-2 rounded-pill hover:bg-soft ' + TAP,
         dataset: { testid: 'cal-month' },
-        text: MONTHS_LONG[view.m] + ' ' + view.y
+        text: label,
+        onClick: () => {
+          mode = mode === 'days' ? 'months' : 'days';
+          draw(0);
+        }
       }),
       el('div', {
-        class: NAV,
+        class: NAV_BTN,
         dataset: { testid: 'cal-next' },
         onClick: () => step(1)
       }, [chevron(false)])
     );
   }
 
-  function drawGrid(direction) {
+  function drawMonthGrid() {
+    const cells = MONTHS.map((name, i) => {
+      const isCurrent = view.y === selected.y && i === selected.m;
+      return el('div', {
+        class: MONTH_CELL
+          + (isCurrent ? ' bg-accent text-accent-ink' : ' text-ink hover:bg-soft'),
+        text: name,
+        onClick: () => {
+          view.m = i;
+          mode = 'days';
+          draw(0);
+        }
+      });
+    });
+
+    const grid = el('div', { class: 'grid grid-cols-4 gap-1' }, cells);
+    body.replaceChildren(grid);
+  }
+
+  function drawDayGrid(direction) {
     const cells = [];
 
     for (const d of DOW) {
@@ -124,51 +173,27 @@ export function datePicker(value, today, onPick) {
       cells.push(el('div', {
         class: CELL
           + (isSelected ? ' bg-accent text-accent-ink' : ' text-ink hover:bg-soft')
-          // Today is an outline, never a fill: a fill would compete with the
-          // selection for the same meaning.
           + (isToday && !isSelected ? ' shadow-[inset_0_0_0_1.5px_var(--ink)]' : ''),
         dataset: { testid: 'cal-day', day: String(d), on: isSelected ? '1' : '0' },
         text: String(d),
         onClick: () => {
-          selected.y = view.y;
-          selected.m = view.m;
-          selected.d = d;
-          draw(0);
-          onPick(iso);
+          const picked = isoDate(view.y, view.m, d);
+          onPick(picked);
+          close();
         }
       }));
     }
 
-    const body = el('div', { class: 'grid grid-cols-7 gap-1' }, cells);
-    grid.replaceChildren(body);
-    if (direction) pushIn(body, direction);
+    const grid = el('div', { class: 'grid grid-cols-7 gap-1' }, cells);
+    body.replaceChildren(grid);
+    if (direction) pushIn(grid, direction);
   }
 
   function draw(direction) {
     drawHead();
-    drawGrid(direction);
+    if (mode === 'months') drawMonthGrid();
+    else drawDayGrid(direction);
   }
 
   draw(0);
-  root.appendChild(head);
-  root.appendChild(grid);
-  return root;
-}
-
-/** A chevron drawn here rather than pulled from the icon set, at nav size. */
-function chevron(left) {
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('width', 15);
-  svg.setAttribute('height', 15);
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('fill', 'none');
-  const path = document.createElementNS(NS, 'path');
-  path.setAttribute('d', left ? 'M15 18l-6-6 6-6' : 'M9 18l6-6-6-6');
-  path.setAttribute('stroke', 'currentColor');
-  path.setAttribute('stroke-width', 2.2);
-  path.setAttribute('stroke-linecap', 'round');
-  path.setAttribute('stroke-linejoin', 'round');
-  svg.appendChild(path);
-  return svg;
 }

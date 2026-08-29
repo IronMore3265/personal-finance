@@ -18,17 +18,11 @@ const STATUSBAR = 'flex-none h-9 flex items-center justify-between px-6 '
   + 'font-ui font-bold text-[11.5px] text-ink tracking-[.02em] normal-nums';
 const ICONBTN = 'flex-none w-[38px] h-[38px] rounded-full bg-soft flex '
   + 'items-center justify-center text-ink';
-const HEADER = 'flex-none flex items-center justify-between gap-2.5 pt-1.5 px-[22px] pb-2.5';
-/*
- * The bar is 92px rather than 78px and its icons 26px rather than 22px, with
- * less padding above them so the row sits lower in the taller bar. The three
- * offsets that clear it - the scroll padding, the FAB and the toast - are
- * keyed to this height and move with it.
- */
-const NAV_BAR = 'h-[calc(92px+var(--safe-b))] pt-[14px] pb-[var(--safe-b)] bg-surface '
+const HEADER = 'flex-none flex items-center justify-between gap-2.5 pt-1.5 px-[18px] pb-2.5';
+const NAV_BAR = 'h-[calc(68px+var(--safe-b))] pt-[6px] pb-[var(--safe-b)] bg-surface '
   + 'border-t border-line flex items-start';
-const NAV_ITEM = 'flex-1 flex flex-col items-center gap-2';
-const NAV_ICON = 26;
+const NAV_ITEM = 'flex-1 flex flex-col items-center gap-1';
+const NAV_ICON = 30;
 /* The pill at the top of a sheet: what says it can be pulled down. */
 const GRABBER = 'flex-none w-[38px] h-1 rounded-pill bg-line mx-auto mt-2.5 mb-1 '
   + '[touch-action:none]';
@@ -201,7 +195,7 @@ function nav() {
 /** Lime FAB, floating clear of the bar rather than notched into it. */
 function fab() {
   return el('div', {
-    class: 'absolute right-[22px] bottom-[calc(110px+var(--safe-b))] w-14 h-14 '
+    class: 'absolute right-[18px] bottom-[calc(86px+var(--safe-b))] w-14 h-14 '
       + 'rounded-full bg-accent text-accent-ink flex items-center justify-center '
       + 'shadow-[var(--sh-fab)] z-[4] ' + PRESS,
     dataset: { testid: 'fab' },
@@ -407,7 +401,7 @@ function render(_store, regions) {
     clear(dom.toast);
     if (store.ui.toast) {
       dom.toast.appendChild(el('div', {
-        class: 'absolute left-[22px] right-[22px] bottom-[calc(112px+var(--safe-b))] '
+        class: 'absolute left-[18px] right-[18px] bottom-[calc(88px+var(--safe-b))] '
           + 'bg-ink text-bg rounded-box py-[14px] px-4 font-ui font-semibold '
           + 'text-[12px]/[1.4] text-center z-[15] normal-nums '
           + '[animation:popIn_var(--dur-micro)_ease]',

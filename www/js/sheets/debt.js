@@ -9,9 +9,9 @@ import { fmt } from '../core/format.js';
 import { store } from '../core/store.js';
 import { chip, fieldLabel, accountChip } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
-import { datePicker, dateLabel } from '../ui/datepicker.js';
+import { openDatePicker, dateLabel } from '../ui/datepicker.js';
 import {
-  CHIPROW_FLUSH, TAP, SHEET, SHEET_HEAD, SHEET_BODY, SHEET_FOOT, SHEET_TITLE,
+  CHIPROW_FLUSH, TAP, SHEET, SHEET_BODY, SHEET_FOOT, SHEET_TITLE,
   SHEET_ICON, SHEET_LEDE, SAVEBTN, DELBTN_WIDE, FIELD, MINILABEL
 } from '../ui/styles.js';
 
@@ -99,7 +99,10 @@ export function renderDebtSheet() {
       chip(
         d.due ? dateLabel(d.due) : 'No due date',
         !!d.due,
-        () => store.set({ debtDateOpen: true }),
+        () => openDatePicker(
+          d.due || store.today, store.today,
+          (next) => patch({ due: next })
+        ),
         icon('calendar', 14)
       ),
       d.due ? chip('Clear', false, () => patch({ due: '' })) : null
@@ -116,18 +119,6 @@ export function renderDebtSheet() {
 
     settleBlock(d)
   ].filter(Boolean));
-
-  if (store.ui.debtDateOpen) {
-    return sheetWith(d, body, el('div', {
-      class: SHEET_FOOT,
-      dataset: { testid: 'sheet-foot', foot: 'panel' }
-    }, [
-      panelHead('Due date', () => store.set({ debtDateOpen: false })),
-      // Silent: the picker owns which month it is showing.
-      datePicker(d.due || store.today, store.today,
-        (next) => { store.ui.editDebt.due = next; })
-    ]));
-  }
 
   const foot = el('div', { class: SHEET_FOOT }, [
     el('div', {
@@ -159,13 +150,12 @@ export function renderDebtSheet() {
       })
   ].filter(Boolean));
 
-  return sheetWith(d, body, foot);
+  return sheetShell(d, body, foot);
 }
 
-/** The sheet shell, shared by the normal footer and the date panel. */
-function sheetWith(d, body, foot) {
+function sheetShell(d, body, foot) {
   return el('div', { class: SHEET + ' max-h-[92%]' }, [
-    el('div', { class: 'flex-none pt-[18px] px-[22px] pb-1 flex items-start gap-3' }, [
+    el('div', { class: 'flex-none pt-[18px] px-[18px] pb-1 flex items-start gap-3' }, [
       el('div', { class: SHEET_ICON }, [icon('hand-coins', 18)]),
       el('div', {}, [
         el('div', { class: SHEET_TITLE, text: d.isNew ? 'New debt' : d.person || 'Debt' }),
@@ -177,23 +167,5 @@ function sheetWith(d, body, foot) {
     ]),
     body,
     foot
-  ]);
-}
-
-/** A Done bar over the date panel, matching the add sheet's. */
-function panelHead(label, onDone) {
-  return el('div', { class: 'flex items-center justify-between pt-0 px-0.5 pb-2.5' }, [
-    el('div', {
-      class: 'font-ui font-semibold text-[10px] tracking-[.12em] uppercase '
-        + 'text-ink3 normal-nums',
-      text: label
-    }),
-    el('div', {
-      class: 'py-[7px] px-[15px] rounded-pill bg-soft text-ink font-ui font-bold '
-        + 'text-[11.5px] tracking-[.04em] normal-nums ' + TAP,
-      dataset: { testid: 'panelhead-done' },
-      text: 'Done',
-      onClick: onDone
-    })
   ]);
 }

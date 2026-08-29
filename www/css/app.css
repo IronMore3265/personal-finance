@@ -78,7 +78,7 @@ button { font-family: var(--ui); border: none; background: none; padding: 0; col
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 22px calc(132px + var(--safe-b));
+  padding: 0 18px calc(108px + var(--safe-b));
   -webkit-overflow-scrolling: touch;
 }
 

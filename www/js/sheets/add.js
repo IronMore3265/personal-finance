@@ -17,16 +17,14 @@ import { store } from '../core/store.js';
 import * as calc from '../core/calc.js';
 import { chip, fieldLabel } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
-import { datePicker, dateLabel } from '../ui/datepicker.js';
+import { openDatePicker, dateLabel } from '../ui/datepicker.js';
+import { keypad, panelHead } from '../ui/keypad.js';
 import { accountPicker, categoryPicker } from './pickers.js';
 import { SYM } from '../data/seed.js';
 import {
   CHIPROW_FLUSH, TAP, MINILABEL, SHEET, SHEET_HEAD, SHEET_BODY, SHEET_FOOT, SAVEBTN
 } from '../ui/styles.js';
 
-/* Recipes used more than once in this sheet. */
-const KEY = 'flex items-center justify-center text-center py-[14px] rounded-key '
-  + 'font-ui font-bold text-[20px] select-none normal-nums';
 const ITEMHEAD = 'flex items-center justify-between mb-2';
 const ITEMADD = 'flex items-center gap-[5px] py-[7px] px-[11px] rounded-pill '
   + 'bg-soft text-ink font-ui font-semibold text-[11px] normal-nums';
@@ -47,28 +45,6 @@ export function saveButtonLabel(total) {
     + (total ? ' · ' + fmt(total, store.ui.entryCurrency) : '');
 }
 
-// Digits in three columns with the operators down a fourth, so arithmetic is
-// one reach away rather than a trip to another app.
-//
-// The operators are drawn, not typed: at keypad size the text glyphs were
-// hard to tell apart - the division sign in particular read as a plus - so
-// each one is the Lucide icon instead. The token the key sends is still the
-// character in calc.js; only the face changes.
-const KEY_ROWS = [
-  ['1', '2', '3', calc.DIV],
-  ['4', '5', '6', calc.MUL],
-  ['7', '8', '9', calc.SUB],
-  ['.', '0', 'del', calc.ADD]
-];
-
-const KEY_ICON = {
-  [calc.DIV]: 'divide',
-  [calc.MUL]: 'x',
-  [calc.SUB]: 'minus',
-  [calc.ADD]: 'plus',
-  del: 'delete'
-};
-
 /**
  * Put the panels away alongside whatever else a tap changes.
  *
@@ -78,7 +54,6 @@ const KEY_ICON = {
  */
 const closePanels = (patch) => ({
   keypadOpen: false,
-  dateOpen: false,
   entryFocusItem: null,
   ...patch
 });
@@ -208,7 +183,8 @@ function amountBlock() {
       el('div', { class: 'text-right flex-none' }, [
         el('div', { class: MINILABEL, text: 'Converted' }),
         el('div', {
-          class: 'font-ui font-bold text-[16px]/[1] text-pos mt-2 normal-nums',
+          class: 'font-ui font-bold text-[16px]/[1] mt-2 normal-nums '
+            + (store.ui.entryType === 'income' ? 'text-pos' : 'text-danger'),
           text: fmt(total * parseFloat(store.ui.entryRate || '1'), account.currency)
         })
       ])
@@ -306,65 +282,16 @@ function dateRow() {
       chip(
         dateLabel(value),
         value !== today && value !== yesterday,
-        () => store.set({ dateOpen: true, keypadOpen: false, entryFocusItem: null }),
+        () => {
+          store.set({ keypadOpen: false, entryFocusItem: null });
+          openDatePicker(value, today, (next) => store.set({ entryDate: next }));
+        },
         icon('calendar', 14)
       )
     ])
   ]);
 }
 
-/**
- * A panel over the sheet body: the wheel, or the keys, under a Done bar.
- *
- * Both sit in the footer rather than in the scrolling body, so the save button
- * stays where it is and nothing below them can be scrolled out of reach.
- */
-function panelHead(label, onDone) {
-  return el('div', { class: 'flex items-center justify-between pt-0 px-0.5 pb-2.5' }, [
-    el('div', {
-      class: 'font-ui font-semibold text-[10px] tracking-[.12em] uppercase '
-        + 'text-ink3 normal-nums',
-      text: label
-    }),
-    el('div', {
-      class: 'py-[7px] px-[15px] rounded-pill bg-soft text-ink font-ui font-bold '
-        + 'text-[11.5px] tracking-[.04em] normal-nums ' + TAP,
-      dataset: { testid: 'panelhead-done' },
-      text: 'Done',
-      onClick: onDone
-    })
-  ]);
-}
-
-function keypad() {
-  return el('div', {
-    class: 'grid grid-cols-[repeat(3,1fr)_0.72fr] gap-1.5',
-    dataset: { testid: 'keypad' }
-  },
-    KEY_ROWS.flat().map(k => {
-      const glyph = KEY_ICON[k];
-      return el('div', {
-        class: KEY + ' ' + TAP + (calc.OPS.includes(k)
-          // Operators read as chrome, not values - outlined rather than filled.
-          ? ' bg-transparent shadow-[inset_0_0_0_1px_var(--line)] text-ink'
-          : k === 'del'
-            // Delete is the one destructive key on the pad, so it says so.
-            ? ' bg-danger-soft text-danger'
-            : ' bg-soft text-ink'),
-        // The face may be an icon, so the token is on the node itself - that
-        // is what identifies a key, to a test as much as to a reader.
-        dataset: { key: k, testid: 'keypad-key' },
-        text: glyph ? undefined : k,
-        onClick: () => store.pressKey(k),
-        // Holding delete clears the whole expression rather than tapping it
-        // away one character at a time.
-        onContextMenu: k === 'del'
-          ? (e) => { e.preventDefault(); store.pressKey('clear'); }
-          : undefined
-      }, glyph ? [icon(glyph, 20, { weight: 2.2 })] : []);
-    })
-  );
-}
 
 export function renderAddSheet() {
   const total = store.entryTotal();
@@ -428,30 +355,15 @@ export function renderAddSheet() {
     onClick: () => store.saveEntry()
   });
 
-  // Three footers, one at a time: the keys, the date wheel, or just save.
-  // There is no "=" key - the line above the figure already shows the whole
-  // expression and the figure already shows what it comes to.
   let foot;
-  if (store.ui.dateOpen) {
-    foot = el('div', {
-      class: SHEET_FOOT,
-      dataset: { testid: 'sheet-foot', foot: 'panel' }
-    }, [
-      panelHead('Date', () => store.set({ dateOpen: false })),
-      // Silent: the picker owns which month it is showing, and a re-render
-      // would snap it back to the month of the selected date.
-      datePicker(store.ui.entryDate || store.today, store.today,
-        (next) => store.set({ entryDate: next }, true)),
-      savebtn
-    ]);
-  } else if (store.ui.keypadOpen) {
+  if (store.ui.keypadOpen) {
     foot = el('div', {
       class: SHEET_FOOT + ' bg-surface border-t border-line',
       dataset: { testid: 'sheet-foot', foot: 'keys' }
     }, [
       panelHead(store.ui.entryFocusItem ? 'Item amount' : 'Amount',
         () => store.set({ keypadOpen: false, entryFocusItem: null })),
-      keypad(),
+      keypad((k) => store.pressKey(k)),
       savebtn
     ]);
   } else {

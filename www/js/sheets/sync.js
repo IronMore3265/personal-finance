@@ -232,7 +232,7 @@ export function renderSyncSheet() {
   const [body, foot] = supabase.signedIn ? signedIn() : signedOut();
 
   return el('div', { class: SHEET + ' max-h-[92%]' }, [
-    el('div', { class: 'flex-none pt-[18px] px-[22px] pb-1 flex items-start gap-3' }, [
+    el('div', { class: 'flex-none pt-[18px] px-[18px] pb-1 flex items-start gap-3' }, [
       el('div', { class: SHEET_ICON }, [icon('upload', 18)]),
       el('div', {}, [
         el('div', { class: SHEET_TITLE, text: 'Cloud sync' }),

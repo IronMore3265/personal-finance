@@ -66,7 +66,8 @@ function primaryCard() {
         text: fmt(balance, account.currency)
       }),
       el('div', {
-        class: 'font-ui font-bold text-[12px]/[1] text-[#c6ee6a] normal-nums',
+        class: 'font-ui font-bold text-[12px]/[1] normal-nums '
+          + (change >= 0 ? 'text-[#c6ee6a]' : 'text-[#f08080]'),
         text: (change >= 0 ? '+' : MINUS) + Math.abs(percent).toFixed(2) + '% · ' +
           signed(change, account.currency)
       })
@@ -101,7 +102,7 @@ function accountRows() {
       ]),
       sparkline(sparkPoints(history), delta.up ? 'var(--pos)' : 'var(--danger)'),
       el('div', { class: ROW_RIGHT + ' min-w-[74px]' }, [
-        el('div', { class: ROW_AMT, text: fmt(a.balance, a.currency) }),
+        el('div', { class: ROW_AMT + ' text-ink', text: fmt(a.balance, a.currency) }),
         el('div', {
           // Bolder and a shade larger than a plain sub-line, which is what the
           // --pos / --neg modifiers used to add on top of the colour.

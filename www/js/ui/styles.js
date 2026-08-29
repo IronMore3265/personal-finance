@@ -28,8 +28,8 @@ export const ROW_BODY = 'flex-1 min-w-0';
 export const ROW_TITLE = 'font-ui font-semibold text-[14.5px]/[1.2] text-ink min-w-0 normal-nums';
 export const ROW_META = 'font-ui font-medium text-[11px]/[1] text-ink3 mt-1.5 tracking-[.01em] normal-nums';
 export const ROW_RIGHT = 'text-right flex-none';
-export const ROW_AMT = 'font-ui font-bold text-[14.5px]/[1] text-ink whitespace-nowrap tracking-[-.01em] normal-nums';
-export const ROW_SUB = 'font-ui font-medium text-[10.5px]/[1] text-ink3 mt-1.5 whitespace-nowrap normal-nums';
+export const ROW_AMT = 'font-ui font-bold text-[14.5px]/[1] whitespace-nowrap tracking-[-.01em] normal-nums';
+export const ROW_SUB = 'font-ui font-medium text-[10.5px]/[1] mt-1.5 whitespace-nowrap normal-nums';
 
 /** Truncate to one line with an ellipsis. */
 export const ELLIP = 'whitespace-nowrap overflow-hidden text-ellipsis';
@@ -60,7 +60,7 @@ export const MICROLABEL = 'font-ui font-bold text-[10px]/[1] tracking-[.16em] up
 /* The sheet shell. Height is the caller's business - each sheet caps its own. */
 export const SHEET = 'absolute left-0 right-0 bottom-0 flex flex-col bg-surface '
   + 'rounded-t-sheet shadow-[var(--sh-sheet)] z-[11]';
-export const SHEET_HEAD = 'flex-none pt-[14px] px-[22px] pb-0';
+export const SHEET_HEAD = 'flex-none pt-[14px] px-[18px] pb-0';
 /*
  * `min-h-0` is the whole scroll fix. A flex item defaults to `min-height: auto`
  * and refuses to shrink below its content, so the body never got shorter than
@@ -69,8 +69,8 @@ export const SHEET_HEAD = 'flex-none pt-[14px] px-[22px] pb-0';
  * of the screen instead of scrolling.
  */
 export const SHEET_BODY = 'flex-1 min-h-0 overflow-y-auto overscroll-contain '
-  + 'px-[22px] pt-0 pb-2.5';
-export const SHEET_FOOT = 'flex-none pt-3 px-[22px] pb-[calc(20px+var(--safe-b))]';
+  + 'px-[18px] pt-0 pb-2.5';
+export const SHEET_FOOT = 'flex-none pt-3 px-[18px] pb-[calc(20px+var(--safe-b))]';
 export const SHEET_TITLE = 'font-ui font-extrabold text-[22px]/[1.05] text-ink '
   + 'tracking-[-.03em] normal-nums';
 export const SHEET_LEDE = 'font-ui font-normal text-[12px]/[1.5] text-ink2 mt-2 normal-nums';

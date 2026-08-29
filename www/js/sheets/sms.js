@@ -92,7 +92,7 @@ export function renderSmsSheet() {
   const body = el('div', {
     // Spelled out rather than SHEET_BODY plus overrides: two padding utilities
     // for the same edge resolve by stylesheet order, not by string order.
-    class: 'flex-1 min-h-0 overflow-y-auto overscroll-contain px-[22px] pt-[14px] pb-0',
+    class: 'flex-1 min-h-0 overflow-y-auto overscroll-contain px-[18px] pt-[14px] pb-0',
     dataset: { testid: 'sheet-body' }
   }, [
     el('textarea', {
@@ -142,7 +142,7 @@ export function renderSmsSheet() {
   body.querySelector('#sms-input').value = store.ui.smsText;
 
   return el('div', { class: SHEET + ' max-h-[92%]' }, [
-    el('div', { class: 'flex-none pt-[18px] px-[22px] pb-1 flex items-start gap-3' }, [
+    el('div', { class: 'flex-none pt-[18px] px-[18px] pb-1 flex items-start gap-3' }, [
       el('div', { class: SHEET_ICON }, [icon('message', 18, { weight: 1.8 })]),
       el('div', { style: { flex: '1' } }, [
         el('div', { class: SHEET_TITLE, text: 'Parse an SMS' }),

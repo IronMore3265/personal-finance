@@ -32,7 +32,7 @@ function row(b) {
     ]),
     el('div', { class: ROW_RIGHT }, [
       el('div', { class: ROW_AMT + ' text-danger', text: fmt(b.amount, 'BDT') }),
-      el('div', { class: ROW_SUB, text: (store.acct(b.account) || {}).name || '' })
+      el('div', { class: ROW_SUB + ' text-ink3', text: (store.acct(b.account) || {}).name || '' })
     ])
   ]);
 }

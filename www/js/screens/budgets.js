@@ -158,7 +158,7 @@ function goalList() {
             class: 'font-ui font-bold text-[15px]/[1] text-ink whitespace-nowrap normal-nums',
             text: fmt(g.current, HOME_CURRENCY)
           }),
-          el('div', { class: ROW_SUB, text: 'of ' + fmt(g.target, HOME_CURRENCY) })
+          el('div', { class: ROW_SUB + ' text-ink3', text: 'of ' + fmt(g.target, HOME_CURRENCY) })
         ])
       ]),
       el('div', { class: 'flex items-center gap-[9px] mt-[13px]' }, [

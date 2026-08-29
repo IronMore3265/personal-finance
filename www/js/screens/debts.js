@@ -51,9 +51,9 @@ function row(d) {
         el('div', { class: ROW_META + ' ' + ELLIP, text: meta || 'no due date' })
       ]),
       el('div', { class: ROW_RIGHT }, [
-        el('div', { class: ROW_AMT, text: fmt(outstanding, d.currency) }),
+        el('div', { class: ROW_AMT + ' text-ink', text: fmt(outstanding, d.currency) }),
         paid > 0
-          ? el('div', { class: ROW_SUB, text: 'of ' + fmt(d.principal, d.currency) })
+          ? el('div', { class: ROW_SUB + ' text-ink3', text: 'of ' + fmt(d.principal, d.currency) })
           : null
       ].filter(Boolean))
     ]),
@@ -149,7 +149,7 @@ export function renderDebts() {
         el('div', { class: ROW_TITLE + ' ' + ELLIP, text: d.person }),
         el('div', { class: ROW_META, text: 'settled' })
       ]),
-      el('div', { class: ROW_AMT, text: fmt(d.principal, d.currency) })
+      el('div', { class: ROW_AMT + ' text-ink', text: fmt(d.principal, d.currency) })
     ])));
   }
 
