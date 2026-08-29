@@ -58,7 +58,16 @@ class SqliteDriver {
       values: [],
       readonly: false
     });
-    if (!values.length || Number(values[0].n) === 0) await this.seed();
+    if (!values.length || Number(values[0].n) === 0) {
+      await this.seed();
+      return;
+    }
+
+    // A database created before `rules` existed gets the table from the DDL
+    // above, but empty - seed() never runs again once there are accounts, so
+    // the parser would match nothing until the user wrote a rule by hand.
+    const ruleRows = await this.all('SELECT COUNT(*) AS n FROM rules;');
+    if (!ruleRows.length || Number(ruleRows[0].n) === 0) await this.seedRules();
   }
 
   async hasTable(name) {
@@ -152,6 +161,10 @@ class SqliteDriver {
     for (const b of seed.BILLS) await this.saveRecurring(b);
     for (const d of seed.DEBTS) await this.saveDebt(d);
     for (const p of seed.DEBT_PAYMENTS) await this.addDebtPayment(p);
+    await this.seedRules();
+  }
+
+  async seedRules() {
     for (const [i, r] of seed.RULES.entries()) {
       await this.run(
         'INSERT INTO rules (id, sender, pattern, type, account, cat, label, sort) VALUES (?,?,?,?,?,?,?,?);',
@@ -395,7 +408,7 @@ class WebDriver {
     d.items = d.items || {};
     d.debts = d.debts || [];
     d.debtPayments = d.debtPayments || [];
-    d.rules = d.rules || [];
+    d.rules = d.rules || seed.RULES.map(r => ({ ...r }));
     (d.bills || []).forEach(b => {
       if (b.nextDue === undefined) b.nextDue = b.due;
       if (b.autoPost === undefined) b.autoPost = 0;
