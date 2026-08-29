@@ -48,7 +48,7 @@ export const test = base.extend({
           );
         }
         await page.goto('/');
-        await page.waitForSelector('.boot--gone', { state: 'attached' });
+        await page.waitForSelector('#boot[data-gone="1"]', { state: 'attached' });
         // The screen body is built in the same pass as the boot fade.
         await expect(page.locator('#scroll')).not.toBeEmpty();
       },
@@ -63,22 +63,67 @@ export const test = base.extend({
       },
 
       openAddSheet() {
-        return page.locator('.fab').click();
+        return page.locator('[data-testid="fab"]').click();
       },
 
-      /** Tap a sequence of keypad labels: '1', '×', 'del', '='. */
-      async keys(labels) {
-        for (const k of labels) {
-          // The delete key is drawn as the backspace glyph.
-          const label = k === 'del' ? '⌫' : k;
-          await page.locator('.keypad__key', { hasText: new RegExp('^' + escape(label) + '$') })
-            .first().click();
+      /**
+       * Open the add sheet on a draft that is ready to save.
+       *
+       * Nothing below the account renders until one is chosen, and neither an
+       * account nor a category is preselected any more - so every test that
+       * touches the category grid, the items, the date, the note or the save
+       * button needs this rather than the bare sheet.
+       */
+      async openFilledSheet(account = 'Cash wallet', category = 'Groceries') {
+        await page.locator('[data-testid="fab"]').click();
+        await app.pickAccount(account);
+        if (category) await page.locator('[data-testid="catchip"]', { hasText: category }).click();
+      },
+
+      /** Expand the account row's group and pick one account out of it. */
+      async pickAccount(name) {
+        const row = () => page.locator('[data-testid="sheet-body"] [data-testid="chiprow"]').first();
+        const direct = row().locator('[data-testid="chip"]', { hasText: name });
+        if (await direct.count()) { await direct.first().click(); return; }
+
+        // Otherwise it is inside a group; open each until the account shows.
+        for (const label of ['Cash', 'Bank account', 'Mobile wallet', 'Credit card']) {
+          const group = row().locator('[data-testid="chip"]', { hasText: label });
+          if (!await group.count()) continue;
+          await group.first().click();
+          const hit = row().locator('[data-testid="chip"]', { hasText: name });
+          if (await hit.count()) { await hit.first().click(); return; }
+          await row().locator('[data-testid="chip"][data-on="1"]').first().click();
         }
+        throw new Error('no account chip called ' + name);
+      },
+
+      /**
+       * Tap a sequence of keypad tokens: '1', '×', 'del'.
+       *
+       * Keys are addressed by their data-key rather than their face: the
+       * operators and delete are drawn as icons and have no text at all.
+       * Raises the keypad first, since it is only up while a number is
+       * actually being entered.
+       */
+      async keys(labels) {
+        if (!await page.locator('[data-testid="keypad"]').count()) {
+          await page.locator('[data-testid="amount-row"]').click();
+          await page.locator('[data-testid="keypad"]').waitFor();
+        }
+        for (const k of labels) {
+          await page.locator('[data-testid="keypad-key"][data-key="' + k + '"]').first().click();
+        }
+      },
+
+      /** Put the keypad away, the way the Done bar does. */
+      closeKeys() {
+        return page.locator('[data-foot="keys"] [data-testid="panelhead-done"]').click();
       },
 
       /** Dismiss a sheet by tapping the scrim above it, not through it. */
       dismiss() {
-        return page.locator('.scrim').click({ position: { x: 10, y: 10 } });
+        return page.locator('[data-testid="scrim"]').click({ position: { x: 10, y: 10 } });
       },
 
       /**
@@ -106,7 +151,5 @@ export const test = base.extend({
     expect(unexpected, 'console should be clean').toEqual([]);
   }
 });
-
-const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export { expect };

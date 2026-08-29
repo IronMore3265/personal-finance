@@ -5,41 +5,15 @@
 //   - Nothing bounces. Every arrival decelerates cleanly to rest.
 //   - Stagger arrivals, synchronise departures.
 //   - Charts always animate their data; bars grow from the baseline.
-//   - Every tap is acknowledged with a ripple before anything else moves.
+//   - Every tap is acknowledged, but quietly: a small press-shrink, no ripple.
+//     The expanding circle read as a grey blob over ink-coloured rows, so it
+//     was removed; `active:scale-[.985]` in the TAP recipe is what is left.
 //
 // Camera dollies and device slides from the reel are deliberately absent -
 // section 7.7 marks those as presentation, not app behaviour.
 
 const reduced = () =>
   window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-/** Circular ripple expanding from the touch point, ~0.28s. */
-export function ripple(event, host) {
-  if (reduced()) return;
-  const node = host || event.currentTarget;
-  if (!node || !node.classList.contains('tappable')) return;
-
-  const r = node.getBoundingClientRect();
-  const size = Math.max(r.width, r.height) * 2;
-  const x = (event.clientX ?? r.left + r.width / 2) - r.left;
-  const y = (event.clientY ?? r.top + r.height / 2) - r.top;
-
-  const dot = document.createElement('span');
-  dot.className = 'ripple';
-  dot.style.width = dot.style.height = size + 'px';
-  dot.style.left = x - size / 2 + 'px';
-  dot.style.top = y - size / 2 + 'px';
-  node.appendChild(dot);
-  dot.addEventListener('animationend', () => dot.remove());
-}
-
-/** Wire ripples for every .tappable inside a subtree. */
-export function bindRipples(root) {
-  root.addEventListener('pointerdown', (e) => {
-    const target = e.target.closest && e.target.closest('.tappable');
-    if (target && root.contains(target)) ripple(e, target);
-  });
-}
 
 /**
  * Pattern A - assemble. Children of `host` fade up 12pt with a per-row delay.

@@ -6,8 +6,8 @@ import { test, expect, CLOCK } from './fixtures.js';
 test.describe('boot', () => {
   test('opens on seeded data with a clean console', async ({ app, page }) => {
     await app.open();
-    await expect(page.locator('.balance__value')).toContainText('৳');
-    await expect(page.locator('.row')).not.toHaveCount(0);
+    await expect(page.locator('[data-testid="balance-value"]')).toContainText('৳');
+    await expect(page.locator('[data-testid="row"]')).not.toHaveCount(0);
   });
 });
 
@@ -16,9 +16,10 @@ test.describe('boot', () => {
 test.describe('add sheet scrolling', () => {
   test('the body scrolls and the save button stays on screen', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
+    await app.openFilledSheet();
+    await app.keys(['5', '0', '0']);
 
-    const body = page.locator('.sheet__body');
+    const body = page.locator('[data-testid="sheet-body"]');
     const metrics = await body.evaluate(n => ({
       scrollHeight: n.scrollHeight, clientHeight: n.clientHeight
     }));
@@ -27,24 +28,28 @@ test.describe('add sheet scrolling', () => {
     ).toBeGreaterThan(metrics.clientHeight);
 
     // The actual bug: without min-height:0 the footer was pushed off-screen.
-    const save = await page.locator('.savebtn').boundingBox();
+    const save = await page.locator('[data-testid="savebtn"]').boundingBox();
     const viewport = page.viewportSize();
     expect(save.y + save.height).toBeLessThanOrEqual(viewport.height + 1);
   });
 
   test('scroll position survives a tap inside the sheet', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
+    // No category, so the grid stays open and the body has something to
+    // scroll - folded to a single chip it now fits without scrolling at all.
+    await app.openFilledSheet('Cash wallet', null);
 
-    const body = page.locator('.sheet__body');
+    const body = page.locator('[data-testid="sheet-body"]');
     await body.evaluate(n => { n.scrollTop = 140; });
     const before = await body.evaluate(n => n.scrollTop);
     expect(before).toBeGreaterThan(0);
 
-    await page.locator('.catchip').nth(2).click();
-    await expect(page.locator('.catchip--on')).toHaveCount(1);
+    // A tap that changes state without changing the body's height, so the
+    // scroll position has somewhere to survive to.
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]', { hasText: 'Yesterday' }).click();
+    await expect(page.locator('[data-testid="daterow"] [data-testid="chip"][data-on="1"]')).toContainText('Yesterday');
 
-    expect(await page.locator('.sheet__body').evaluate(n => n.scrollTop)).toBe(before);
+    expect(await page.locator('[data-testid="sheet-body"]').evaluate(n => n.scrollTop)).toBe(before);
   });
 });
 
@@ -53,22 +58,22 @@ test.describe('add sheet scrolling', () => {
 test.describe('rendering', () => {
   test('a keypad tap touches only the amount nodes, not the whole sheet', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
+    await app.openFilledSheet();
+    // Raise the keys before observing: opening them is a real render, and it
+    // is the taps afterwards that must stay off the slow path.
+    await page.locator('[data-testid="amount-row"]').click();
 
     await page.evaluate(() => {
       window.__mutations = [];
-      const target = document.querySelector('.sheet');
+      const target = document.querySelector('[data-testid="sheet"]');
       new MutationObserver(records => {
         for (const r of records) {
-          // Tap ripples are appended into whatever was pressed. They are the
-          // press feedback, not a re-render, so they are not what this is about.
-          const added = [...r.addedNodes];
-          if (added.length && added.every(n => n.classList && n.classList.contains('ripple'))) continue;
-          if ([...r.removedNodes].some(n => n.classList && n.classList.contains('ripple'))) continue;
-
           let n = r.target;
           if (n.nodeType === 3) n = n.parentElement;
-          window.__mutations.push(n ? n.className : '?');
+          // Identified by test id rather than class: styling is utilities now,
+          // so a class name says nothing about which node this is.
+          const named = n && n.closest ? n.closest('[data-testid]') : null;
+          window.__mutations.push(named ? named.dataset.testid : '?');
         }
       }).observe(target, { childList: true, subtree: true, characterData: true });
     });
@@ -79,14 +84,14 @@ test.describe('rendering', () => {
     expect(touched.length, 'something mutated').toBeGreaterThan(0);
     for (const cls of touched) {
       expect(cls, 'unexpected node rebuilt on a keypress: ' + cls)
-        .toMatch(/amount__val|amount__expr|savebtn/);
+        .toMatch(/^(amount-val|amount-expr|savebtn)$/);
     }
   });
 
   test('typing in the activity search does not rebuild the whole ledger', async ({ app, page }) => {
     await app.open();
     await app.goto('txns');
-    await expect(page.locator('.row')).not.toHaveCount(0);
+    await expect(page.locator('[data-testid="row"]')).not.toHaveCount(0);
 
     await page.evaluate(() => {
       window.__adds = 0;
@@ -95,7 +100,7 @@ test.describe('rendering', () => {
     });
 
     await page.locator('#search-input').fill('coffee');
-    await expect(page.locator('.row')).toHaveCount(1);
+    await expect(page.locator('[data-testid="row"]')).toHaveCount(1);
 
     // The body is still rebuilt (the list genuinely changes), but the header,
     // nav and sheet regions must be left alone.
@@ -135,11 +140,11 @@ test.describe('dates', () => {
 
   test('an entry saves on the date that was picked', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
+    await app.openFilledSheet();
     await app.keys(['5', '0', '0']);
 
-    await page.locator('#date-input').fill('2026-08-20');
-    await page.locator('.savebtn').click();
+    await page.evaluate(() => window.__paisa.set({ entryDate: '2026-08-20' }));
+    await page.locator('[data-testid="savebtn"]').click();
 
     const db = await app.db();
     const saved = db.txns.find(t => t.id.startsWith('m'));
@@ -149,9 +154,45 @@ test.describe('dates', () => {
 
   test('the Yesterday chip picks the day before', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
-    await page.locator('.daterow .chip', { hasText: 'Yesterday' }).click();
-    expect(await page.locator('#date-input').inputValue()).toBe('2026-08-27');
+    await app.openFilledSheet();
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]', { hasText: 'Yesterday' }).click();
+    expect(await page.evaluate(() => window.__paisa.ui.entryDate)).toBe('2026-08-27');
+  });
+
+  test('the calendar writes back the day you tap', async ({ app, page }) => {
+    await app.open();
+    await app.openFilledSheet();
+
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]').last().click();
+    await expect(page.locator('[data-testid="datepicker"]')).toBeVisible();
+    await expect(page.locator('[data-testid="cal-month"]')).toHaveText('August 2026');
+
+    await page.locator('[data-testid="cal-day"][data-day="1"]').click();
+
+    await page.locator('[data-foot="panel"] [data-testid="panelhead-done"]').click();
+    expect(await page.evaluate(() => window.__paisa.ui.entryDate)).toBe('2026-08-01');
+  });
+
+  test('the calendar steps between months', async ({ app, page }) => {
+    await app.open();
+    await app.openFilledSheet();
+
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]').last().click();
+    await page.locator('[data-testid="cal-prev"]').click();
+    await expect(page.locator('[data-testid="cal-month"]')).toHaveText('July 2026');
+
+    await page.locator('[data-testid="cal-day"][data-day="4"]').click();
+    expect(await page.evaluate(() => window.__paisa.ui.entryDate)).toBe('2026-07-04');
+  });
+
+  test('no sheet falls back to the platform date dialog', async ({ app, page }) => {
+    await app.open();
+
+    await app.goto('scheduled');
+    await page.locator('[data-testid="row"]', { hasText: 'Netflix' }).first().click();
+    await expect(page.locator('input[type="date"]')).toHaveCount(0);
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]').first().click();
+    await expect(page.locator('[data-testid="datepicker"]')).toBeVisible();
   });
 });
 
@@ -161,10 +202,10 @@ test.describe('editing', () => {
     await app.goto('txns');
 
     const before = await page.evaluate(() => window.__paisa.netWorth());
-    await page.locator('.row').first().click();
-    await expect(page.locator('.sheet--add')).toBeVisible();
-    await expect(page.locator('.sheet__editlabel')).toBeVisible();
-    await expect(page.locator('.savebtn')).toContainText('Update');
+    await page.locator('[data-testid="row"]').first().click();
+    await expect(page.locator('[data-sheet="add"]')).toBeVisible();
+    await expect(page.locator('[data-testid="sheet-editlabel"]')).toBeVisible();
+    await expect(page.locator('[data-testid="savebtn"]')).toContainText('Update');
 
     const id = await page.evaluate(() => window.__paisa.ui.entryId);
     const original = await page.evaluate(
@@ -173,7 +214,7 @@ test.describe('editing', () => {
 
     await app.keys(['del', 'del', 'del', 'del', 'del', 'del', 'del', 'del', 'del']);
     await app.keys(['1', '0', '0']);
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
 
     const after = await page.evaluate(() => window.__paisa.netWorth());
     expect(after).not.toBe(before);
@@ -186,26 +227,26 @@ test.describe('editing', () => {
   test('delete needs two taps and then removes the row', async ({ app, page }) => {
     await app.open();
     await app.goto('txns');
-    const count = await page.locator('.row').count();
+    const count = await page.locator('[data-testid="row"]').count();
 
-    await page.locator('.row').first().click();
-    await page.locator('.delbtn').click();
-    await expect(page.locator('.delbtn--armed')).toBeVisible();
-    await page.locator('.delbtn').click();
+    await page.locator('[data-testid="row"]').first().click();
+    await page.locator('[data-testid="delbtn"]').click();
+    await expect(page.locator('[data-testid="delbtn"][data-armed="1"]')).toBeVisible();
+    await page.locator('[data-testid="delbtn"]').click();
 
-    await expect(page.locator('.sheet--add')).toHaveCount(0);
-    await expect(page.locator('.row')).toHaveCount(count - 1);
+    await expect(page.locator('[data-sheet="add"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="row"]')).toHaveCount(count - 1);
   });
 
   test('the FAB always opens a blank draft, never the last edited row', async ({ app, page }) => {
     await app.open();
     await app.goto('txns');
-    await page.locator('.row').first().click();
+    await page.locator('[data-testid="row"]').first().click();
     await app.dismiss();
 
     await app.openAddSheet();
-    await expect(page.locator('.savebtn')).toContainText('Save');
-    await expect(page.locator('.amount__val')).toHaveText('0');
+    await expect(page.locator('[data-testid="savebtn"]')).toContainText('Save');
+    await expect(page.locator('[data-testid="amount-val"]')).toHaveText('0');
   });
 });
 
@@ -216,27 +257,27 @@ test.describe('account groups', () => {
     await app.open();
     await app.openAddSheet();
 
-    const row = page.locator('.sheet__body .chiprow').first();
+    const row = page.locator('[data-testid="sheet-body"] [data-testid="chiprow"]').first();
     // cash, bank, mfs, card - four types in the seed data.
-    await expect(row.locator('.chip')).toHaveCount(4);
+    await expect(row.locator('[data-testid="chip"]')).toHaveCount(4);
 
-    await row.locator('.chip', { hasText: 'Mobile wallet' }).click();
+    await row.locator('[data-testid="chip"]', { hasText: 'Mobile wallet' }).click();
     // The group chip plus its three wallets, and nothing else.
-    await expect(page.locator('.sheet__body .chiprow').first().locator('.chip')).toHaveCount(4);
-    await expect(page.locator('.chip', { hasText: 'Nagad' })).toBeVisible();
-    await expect(page.locator('.chip', { hasText: 'Credit card' })).toHaveCount(0);
+    await expect(page.locator('[data-testid="sheet-body"] [data-testid="chiprow"]').first().locator('[data-testid="chip"]')).toHaveCount(4);
+    await expect(page.locator('[data-testid="chip"]', { hasText: 'Nagad' })).toBeVisible();
+    await expect(page.locator('[data-testid="chip"]', { hasText: 'Credit card' })).toHaveCount(0);
   });
 
   test('picking an account collapses the row and names it on its group', async ({ app, page }) => {
     await app.open();
     await app.openAddSheet();
 
-    const row = () => page.locator('.sheet__body .chiprow').first();
-    await row().locator('.chip', { hasText: 'Mobile wallet' }).click();
-    await row().locator('.chip', { hasText: 'Nagad' }).click();
+    const row = () => page.locator('[data-testid="sheet-body"] [data-testid="chiprow"]').first();
+    await row().locator('[data-testid="chip"]', { hasText: 'Mobile wallet' }).click();
+    await row().locator('[data-testid="chip"]', { hasText: 'Nagad' }).click();
 
-    await expect(row().locator('.chip')).toHaveCount(4);
-    await expect(row().locator('.chip--on')).toContainText('Nagad');
+    await expect(row().locator('[data-testid="chip"]')).toHaveCount(4);
+    await expect(row().locator('[data-testid="chip"][data-on="1"]')).toContainText('Nagad');
     expect(await page.evaluate(() => window.__paisa.ui.entryAccount)).toBe('a4');
   });
 
@@ -245,7 +286,7 @@ test.describe('account groups', () => {
     // a6 carries the Aarong purchase, so removing it would orphan that row.
     const gone = await page.evaluate(() => window.__paisa.deleteAccount('a6'));
     expect(gone).toBe(false);
-    await expect(page.locator('.toast')).toContainText('In use by');
+    await expect(page.locator('[data-testid="toast"]')).toContainText('In use by');
   });
 
   test('a group disappears once its last account is gone', async ({ app, page }) => {
@@ -261,9 +302,9 @@ test.describe('account groups', () => {
     });
 
     await app.openAddSheet();
-    const row = page.locator('.sheet__body .chiprow').first();
-    await expect(row.locator('.chip')).toHaveCount(3);
-    await expect(row.locator('.chip', { hasText: 'Credit card' })).toHaveCount(0);
+    const row = page.locator('[data-testid="sheet-body"] [data-testid="chiprow"]').first();
+    await expect(row.locator('[data-testid="chip"]')).toHaveCount(3);
+    await expect(row.locator('[data-testid="chip"]', { hasText: 'Credit card' })).toHaveCount(0);
   });
 });
 
@@ -272,42 +313,56 @@ test.describe('account groups', () => {
 test.describe('calculator keypad', () => {
   test('multiplication binds tighter than addition', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
+    await app.openFilledSheet();
     await app.keys(['2', '4', '0', '×', '2', '+', '8', '0', '0']);
 
-    await expect(page.locator('.amount__expr')).toHaveText('240 × 2 + 800');
-    await expect(page.locator('.amount__val')).toHaveText('1,280');
-    await expect(page.locator('.savebtn')).toContainText('1,280');
+    await expect(page.locator('[data-testid="amount-expr"]')).toHaveText('240 × 2 + 800');
+    await expect(page.locator('[data-testid="amount-val"]')).toHaveText('1,280');
+    await expect(page.locator('[data-testid="savebtn"]')).toContainText('1,280');
   });
 
-  test('equals folds the expression, and the saved amount is the result', async ({ app, page }) => {
+  // There is no equals key: the expression line and the running figure already
+  // show both halves of the sum, so folding was a step with nothing to reveal.
+  test('an unfolded expression saves as its result', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
+    await app.openFilledSheet();
     await app.keys(['2', '4', '0', '×', '2']);
-    await page.locator('.equalsbtn').click();
 
-    await expect(page.locator('.amount__expr')).toHaveText('');
-    await expect(page.locator('.amount__val')).toHaveText('480');
+    await expect(page.locator('[data-testid="amount-expr"]')).toHaveText('240 × 2');
+    await expect(page.locator('[data-testid="amount-val"]')).toHaveText('480');
+    await expect(page.locator('[data-testid="keypad-key"][data-key="="]')).toHaveCount(0);
 
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
     const db = await app.db();
     expect(db.txns.find(t => t.id.startsWith('m')).amount).toBe(480);
   });
 
   test('dividing by zero holds the last good value rather than NaN', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
+    await app.openFilledSheet();
     await app.keys(['9', '÷', '0']);
-    await expect(page.locator('.amount__val')).toHaveText('9');
-    await expect(page.locator('.amount__val')).not.toHaveText(/NaN/);
+    await expect(page.locator('[data-testid="amount-val"]')).toHaveText('9');
+    await expect(page.locator('[data-testid="amount-val"]')).not.toHaveText(/NaN/);
   });
 
-  test('the equals key is only offered when there is a sum to fold', async ({ app, page }) => {
+  test('the keypad is only up while a number is being entered', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
-    await expect(page.locator('.equalsbtn')).toHaveCount(0);
-    await app.keys(['5', '+']);
-    await expect(page.locator('.equalsbtn')).toHaveCount(1);
+    await app.openFilledSheet();
+
+    // Nothing raised it yet: the sheet opens on the fields, not on the keys.
+    await expect(page.locator('[data-testid="keypad"]')).toHaveCount(0);
+
+    await page.locator('[data-testid="amount-row"]').click();
+    await expect(page.locator('[data-testid="keypad"]')).toBeVisible();
+
+    await app.closeKeys();
+    await expect(page.locator('[data-testid="keypad"]')).toHaveCount(0);
+
+    // Touching another field puts them away without a trip to Done.
+    await page.locator('[data-testid="amount-row"]').click();
+    await expect(page.locator('[data-testid="keypad"]')).toBeVisible();
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]', { hasText: 'Yesterday' }).click();
+    await expect(page.locator('[data-testid="keypad"]')).toHaveCount(0);
   });
 });
 
@@ -316,32 +371,32 @@ test.describe('calculator keypad', () => {
 test.describe('line items', () => {
   test('the total is the sum of the items and is not typed directly', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
+    await app.openFilledSheet();
 
     const amounts = [1200, 240, 800, 160];
     for (const a of amounts) {
-      await page.locator('.itemadd').click();
+      await page.locator('[data-testid="itemadd"]').click();
       await app.keys(String(a).split(''));
     }
 
-    await expect(page.locator('.itemrow')).toHaveCount(4);
-    await expect(page.locator('.amount__val')).toHaveText('2,400');
-    await expect(page.locator('.amount__note')).toHaveText('Sum of 4 items');
+    await expect(page.locator('[data-testid="itemrow"]')).toHaveCount(4);
+    await expect(page.locator('[data-testid="amount-val"]')).toHaveText('2,400');
+    await expect(page.locator('[data-testid="amount-note"]')).toHaveText('Sum of 4 items');
   });
 
   test('items round-trip through save and reopen', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
+    await app.openFilledSheet();
 
-    await page.locator('.itemadd').click();
-    await page.locator('.itemrow__label').first().fill('Biryani');
+    await page.locator('[data-testid="itemadd"]').click();
+    await page.locator('[data-testid="itemrow-label"]').first().fill('Biryani');
     await app.keys(['1', '2', '0', '0']);
 
-    await page.locator('.itemadd').click();
-    await page.locator('.itemrow__label').nth(1).fill('Borhani');
+    await page.locator('[data-testid="itemadd"]').click();
+    await page.locator('[data-testid="itemrow-label"]').nth(1).fill('Borhani');
     await app.keys(['2', '4', '0']);
 
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
 
     const db = await app.db();
     const saved = db.txns.find(t => t.id.startsWith('m'));
@@ -351,31 +406,31 @@ test.describe('line items', () => {
 
     // Saved today, so it sorts to the top of the ledger.
     await app.goto('txns');
-    await page.locator('.row').first().click();
-    await expect(page.locator('.itemrow')).toHaveCount(2);
-    await expect(page.locator('.itemrow__label').first()).toHaveValue('Biryani');
-    await expect(page.locator('.amount__val')).toHaveText('1,440');
+    await page.locator('[data-testid="row"]').first().click();
+    await expect(page.locator('[data-testid="itemrow"]')).toHaveCount(2);
+    await expect(page.locator('[data-testid="itemrow-label"]').first()).toHaveValue('Biryani');
+    await expect(page.locator('[data-testid="amount-val"]')).toHaveText('1,440');
   });
 
   test('the row meta says how many items a transaction has', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
-    await page.locator('.itemadd').click();
+    await app.openFilledSheet();
+    await page.locator('[data-testid="itemadd"]').click();
     await app.keys(['5', '0', '0']);
-    await page.locator('.itemadd').click();
+    await page.locator('[data-testid="itemadd"]').click();
     await app.keys(['2', '5', '0']);
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
 
     await app.goto('txns');
-    await expect(page.locator('.row__meta', { hasText: '2 items' }).first()).toBeVisible();
+    await expect(page.locator('[data-testid="row-meta"]', { hasText: '2 items' }).first()).toBeVisible();
   });
 
   test('deleting a transaction takes its items with it', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
-    await page.locator('.itemadd').click();
+    await app.openFilledSheet();
+    await page.locator('[data-testid="itemadd"]').click();
     await app.keys(['5', '0', '0']);
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
 
     let db = await app.db();
     const id = db.txns.find(t => t.id.startsWith('m')).id;
@@ -396,22 +451,26 @@ test.describe('category and account editors', () => {
     await app.open();
     await app.goto('categories');
 
-    await page.locator('.row', { hasText: 'Groceries' }).first().click();
-    await expect(page.locator('.sheet--entity')).toBeVisible();
+    await page.locator('[data-testid="row"]', { hasText: 'Groceries' }).first().click();
+    await expect(page.locator('[data-sheet="entity"]')).toBeVisible();
 
     await page.locator('#icon-search').fill('pizza');
-    await page.locator('.icongrid__cell').first().click();
-    await page.locator('.swatch').nth(5).click();
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="icongrid-cell"]').first().click();
+    await page.locator('[data-testid="swatch"]').nth(5).click();
+    await page.locator('[data-testid="savebtn"]').click();
 
     const db = await app.db();
     const cat = db.categories.find(c => c.name === 'Groceries');
     expect(cat.icon).toBe('pizza');
     expect(cat.color).toContain('oklch');
 
-    // And it is actually drawn, not just stored.
+    // And it is actually drawn, not just stored. Icon chips are monochrome and
+    // carry the category's colour as a ring, so the colour is on the box
+    // shadow rather than the background.
     await app.goto('txns');
-    await expect(page.locator('.chipglyph--cat').first()).toBeVisible();
+    const glyph = page.locator('[data-testid="chipglyph"][data-chip="mono"]').first();
+    await expect(glyph).toBeVisible();
+    expect(await glyph.evaluate(n => n.style.boxShadow)).toContain('oklch');
   });
 
   test('account icons reach Home, not just the accounts screen', async ({ app, page }) => {
@@ -421,9 +480,9 @@ test.describe('category and account editors', () => {
     // against the brand regexes, which is the guess this feature replaced.
     // The account row carries a sparkline; a transaction row that merely
     // mentions the account in its meta line does not.
-    const chip = page.locator('.row', { hasText: 'Cash wallet' })
-      .filter({ has: page.locator('.spark') })
-      .locator('.chipglyph');
+    const chip = page.locator('[data-testid="row"]', { hasText: 'Cash wallet' })
+      .filter({ has: page.locator('[data-testid="spark"]') })
+      .locator('[data-testid="chipglyph"]');
 
     await expect(chip).toHaveCount(1);
     await expect(chip).toHaveText('');            // an icon, not the letter C
@@ -434,28 +493,28 @@ test.describe('category and account editors', () => {
     await app.open();
     await app.goto('accounts');
 
-    await page.locator('.row', { hasText: 'bKash' }).first().click();
+    await page.locator('[data-testid="row"]', { hasText: 'bKash' }).first().click();
     await page.locator('#entity-name').fill('bKash personal');
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
 
     // brandKey() would no longer match "bKash personal" on its own; the stored
     // brand is what keeps the logo.
     const db = await app.db();
     expect(db.accounts.find(a => a.id === 'a3').name).toBe('bKash personal');
-    await expect(page.locator('.row', { hasText: 'bKash personal' })
-      .locator('.chipglyph--brand')).toBeVisible();
+    await expect(page.locator('[data-testid="row"]', { hasText: 'bKash personal' })
+      .locator('[data-testid="chipglyph"][data-chip="brand"]')).toBeVisible();
   });
 
   test('a category in use refuses to be deleted', async ({ app, page }) => {
     await app.open();
     await app.goto('categories');
 
-    await page.locator('.row', { hasText: 'Groceries' }).first().click();
-    await page.locator('.delbtn').click();
-    await page.locator('.delbtn').click();
+    await page.locator('[data-testid="row"]', { hasText: 'Groceries' }).first().click();
+    await page.locator('[data-testid="delbtn"]').click();
+    await page.locator('[data-testid="delbtn"]').click();
 
-    await expect(page.locator('.toast')).toContainText('In use by');
-    await expect(page.locator('.sheet--entity')).toBeVisible();
+    await expect(page.locator('[data-testid="toast"]')).toContainText('In use by');
+    await expect(page.locator('[data-sheet="entity"]')).toBeVisible();
     expect((await app.db()).categories.some(c => c.name === 'Groceries')).toBe(true);
   });
 
@@ -463,14 +522,14 @@ test.describe('category and account editors', () => {
     await app.open();
     await app.goto('categories');
 
-    await page.locator('.row', { hasText: 'New expense category' }).click();
+    await page.locator('[data-testid="row"]', { hasText: 'New expense category' }).click();
     await page.locator('#entity-name').fill('Coffee habit');
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
 
-    await expect(page.locator('.row', { hasText: 'Coffee habit' })).toBeVisible();
+    await expect(page.locator('[data-testid="row"]', { hasText: 'Coffee habit' })).toBeVisible();
 
-    await app.openAddSheet();
-    await expect(page.locator('.catchip', { hasText: 'Coffee habit' })).toBeVisible();
+    await app.openFilledSheet('Cash wallet', null);
+    await expect(page.locator('[data-testid="catchip"]', { hasText: 'Coffee habit' })).toBeVisible();
   });
 });
 
@@ -480,11 +539,11 @@ test.describe('debts', () => {
   test('outstanding totals split by direction', async ({ app, page }) => {
     await app.open();
     await app.goto('budgets');
-    await page.locator('.tab', { hasText: 'Debts' }).click();
+    await page.locator('[data-testid="tab"]', { hasText: 'Debts' }).click();
 
     // Seed: Rafi owes 8,000 with 2,000 already repaid; 9,000 owed to Shahin.
-    await expect(page.locator('.debthead__value').first()).toHaveText('৳6,000');
-    await expect(page.locator('.debthead__value').nth(1)).toHaveText('৳9,000');
+    await expect(page.locator('[data-testid="debthead-value"]').first()).toHaveText('৳6,000');
+    await expect(page.locator('[data-testid="debthead-value"]').nth(1)).toHaveText('৳9,000');
   });
 
   test('a repayment moves the account balance but not the category reports', async ({ app, page }) => {
@@ -496,9 +555,9 @@ test.describe('debts', () => {
     }));
 
     await app.goto('budgets');
-    await page.locator('.tab', { hasText: 'Debts' }).click();
-    await page.locator('.debtrow', { hasText: 'Rafi' }).click();
-    await page.locator('.chip', { hasText: '+1,000' }).click();
+    await page.locator('[data-testid="tab"]', { hasText: 'Debts' }).click();
+    await page.locator('[data-testid="debtrow"]', { hasText: 'Rafi' }).click();
+    await page.locator('[data-testid="chip"]', { hasText: '+1,000' }).click();
 
     const after = await page.evaluate(() => ({
       balance: window.__paisa.balance('a3'),
@@ -517,25 +576,25 @@ test.describe('debts', () => {
   test('settling in full moves the debt to Settled', async ({ app, page }) => {
     await app.open();
     await app.goto('budgets');
-    await page.locator('.tab', { hasText: 'Debts' }).click();
-    await page.locator('.debtrow', { hasText: 'Rafi' }).click();
-    await page.locator('.chip', { hasText: 'Settle in full' }).click();
+    await page.locator('[data-testid="tab"]', { hasText: 'Debts' }).click();
+    await page.locator('[data-testid="debtrow"]', { hasText: 'Rafi' }).click();
+    await page.locator('[data-testid="chip"]', { hasText: 'Settle in full' }).click();
 
-    await expect(page.locator('.debtrow', { hasText: 'Rafi' })).toHaveCount(0);
-    await expect(page.locator('.row--muted', { hasText: 'Rafi' })).toBeVisible();
+    await expect(page.locator('[data-testid="debtrow"]', { hasText: 'Rafi' })).toHaveCount(0);
+    await expect(page.locator('[data-testid="row"][data-muted="1"]', { hasText: 'Rafi' })).toBeVisible();
   });
 
   test('a new debt can be recorded', async ({ app, page }) => {
     await app.open();
     await app.goto('budgets');
-    await page.locator('.tab', { hasText: 'Debts' }).click();
-    await page.locator('.row', { hasText: 'Record a debt' }).click();
+    await page.locator('[data-testid="tab"]', { hasText: 'Debts' }).click();
+    await page.locator('[data-testid="row"]', { hasText: 'Record a debt' }).click();
 
     await page.locator('#debt-person').fill('Tanvir');
     await page.locator('#debt-amount').fill('2500');
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
 
-    await expect(page.locator('.debtrow', { hasText: 'Tanvir' })).toBeVisible();
+    await expect(page.locator('[data-testid="debtrow"]', { hasText: 'Tanvir' })).toBeVisible();
     expect((await app.db()).debts.some(d => d.person === 'Tanvir')).toBe(true);
   });
 });
@@ -568,10 +627,10 @@ test.describe('scheduled expenses', () => {
     await app.open(seed);
 
     expect((await app.db()).txns.filter(t => t.note === 'Gym')).toHaveLength(0);
-    await expect(page.locator('.row', { hasText: 'Gym' })).toBeVisible();
+    await expect(page.locator('[data-testid="row"]', { hasText: 'Gym' })).toBeVisible();
 
-    await page.locator('.row', { hasText: 'Gym' }).locator('.roundbtn').click();
-    await expect(page.locator('.toast')).toContainText('Posted');
+    await page.locator('[data-testid="row"]', { hasText: 'Gym' }).locator('[data-testid="roundbtn"]').click();
+    await expect(page.locator('[data-testid="toast"]')).toContainText('Posted');
 
     const db = await app.db();
     expect(db.txns.filter(t => t.note === 'Gym')).toHaveLength(1);
@@ -605,8 +664,8 @@ test.describe('scheduled expenses', () => {
 
       expect((await app.db()).txns.filter(t => t.note === 'Electricity')).toHaveLength(0);
 
-      await page.locator('.row', { hasText: 'Electricity' }).locator('.roundbtn').click();
-      await expect(page.locator('.sheet--add')).toBeVisible();
+      await page.locator('[data-testid="row"]', { hasText: 'Electricity' }).locator('[data-testid="roundbtn"]').click();
+      await expect(page.locator('[data-sheet="add"]')).toBeVisible();
       await expect(page.locator('#note-input')).toHaveValue('Electricity');
     });
 
@@ -678,13 +737,86 @@ test.describe('migration from v1 data', () => {
     await app.open(v1);
 
     await app.goto('txns');
-    await expect(page.locator('.chipglyph').first()).toBeVisible();
+    await expect(page.locator('[data-testid="chipglyph"]').first()).toBeVisible();
+  });
+});
+
+test.describe('pulling a sheet down', () => {
+  /** Drag from the middle of `handle` down by `distance`, in a few steps. */
+  async function pull(page, handle, distance, steps = 8) {
+    const box = await page.locator(handle).boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= steps; i++) {
+      await page.mouse.move(x, y + (distance * i) / steps);
+    }
+    await page.mouse.up();
+  }
+
+  test('a pull on the grabber closes the sheet', async ({ app, page }) => {
+    await app.open();
+    await app.openAddSheet();
+    await expect(page.locator('[data-sheet="add"]')).toBeVisible();
+
+    await pull(page, '[data-testid="sheet-grab"]', 220);
+
+    await expect(page.locator('[data-sheet="add"]')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__paisa.ui.sheet)).toBe(null);
+  });
+
+  test('a short pull springs back and the sheet stays open', async ({ app, page }) => {
+    await app.open();
+    await app.openAddSheet();
+
+    await pull(page, '[data-testid="sheet-grab"]', 40);
+
+    await expect(page.locator('[data-sheet="add"]')).toBeVisible();
+    expect(await page.evaluate(() => window.__paisa.ui.sheet)).toBe('add');
+  });
+
+  test('the top of the body is a drag handle too', async ({ app, page }) => {
+    await app.open();
+    await app.openAddSheet();
+
+    await pull(page, '[data-testid="amount-row"]', 220);
+
+    await expect(page.locator('[data-sheet="add"]')).toHaveCount(0);
+  });
+
+  test('a drag that starts on a control does not also fire it', async ({ app, page }) => {
+    await app.open();
+    await app.openAddSheet();
+
+    // Expense is the selected type; dragging off Income must not select it.
+    const income = page.locator('[data-testid="sheet"]').getByText('Income', { exact: true });
+    const box = await income.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + i * 30);
+    }
+    await page.mouse.up();
+
+    expect(await page.evaluate(() => window.__paisa.ui.entryType)).toBe('expense');
+  });
+
+  test('the keypad is not a drag handle', async ({ app, page }) => {
+    await app.open();
+    await app.openFilledSheet();
+    await page.locator('[data-testid="amount-row"]').click();
+    await expect(page.locator('[data-testid="keypad"]')).toBeVisible();
+
+    await pull(page, '[data-testid="keypad"]', 220);
+
+    await expect(page.locator('[data-sheet="add"]')).toBeVisible();
   });
 });
 
 /** A pristine seeded database, read from a throwaway app load. */
 async function freshDb(page) {
   await page.goto('/');
-  await page.waitForSelector('.boot--gone', { state: 'attached' });
+  await page.waitForSelector('#boot[data-gone="1"]', { state: 'attached' });
   return page.evaluate(() => JSON.parse(window.localStorage.getItem('paisa.db.v1')));
 }

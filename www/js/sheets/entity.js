@@ -8,8 +8,12 @@
 
 import { el } from '../core/dom.js';
 import { store } from '../core/store.js';
-import { chip, fieldLabel, accountChip, categoryChip } from '../ui/components.js';
+import { chip, fieldLabel, accountChip, categoryChip, TYPE_ICON } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
+import {
+  CHIPROW_FLUSH, TAP, SHEET, SHEET_HEAD, SHEET_BODY, SHEET_FOOT, SHEET_TITLE,
+  SAVEBTN, DELBTN_WIDE, FIELD, ELLIP
+} from '../ui/styles.js';
 import { LUCIDE, ICON_GROUPS } from '../ui/lucide-paths.js';
 import { SWATCHES } from '../ui/palette.js';
 import { BRAND_KEYS, brandChip } from '../ui/brands.js';
@@ -19,11 +23,13 @@ const patch = (p) => store.set({ editEntity: { ...store.ui.editEntity, ...p } })
 
 /** The chip the rest of the app will draw, updating as you edit. */
 function preview(e) {
-  return el('div', { class: 'entity__preview' }, [
+  return el('div', { class: 'flex items-center gap-[14px] pt-4 pb-1' }, [
     e.kind === 'account' ? accountChip(e, 44) : categoryChip(e, 44),
     el('input', {
       id: 'entity-name',
-      class: 'entity__name',
+      class: 'flex-1 min-w-0 bg-transparent border-none outline-none font-ui '
+        + 'font-extrabold text-[22px] text-ink tracking-[-.03em] p-0 normal-nums '
+        + 'placeholder:text-ink3',
       value: e.name,
       placeholder: e.kind === 'account' ? 'Account name' : 'Category name',
       // Silent: the preview chip does not depend on the name, so re-rendering
@@ -35,24 +41,43 @@ function preview(e) {
   ]);
 }
 
+// The two sides of the ledger, for the category shape of this sheet.
+const KIND_ICON = { expense: 'arrow-up-right', income: 'arrow-down-left' };
+
+/**
+ * The type picker.
+ *
+ * Four account types do not fit one row at 360px, and wrapping them inside a
+ * pill left the selected segment's square corner poking out past the outer
+ * pill's curve. So it is a plain grid of rounded squares instead - no outer
+ * radius for anything to escape - and each carries the icon the rest of the
+ * app draws for that type, which is quicker to read than the label alone.
+ */
 function typeSeg(e) {
   const options = e.kind === 'account'
     ? Object.keys(TYPE_LABEL).map(k => [k, TYPE_LABEL[k]])
     : [['expense', 'Expense'], ['income', 'Income']];
 
-  return el('div', { class: 'segpill segpill--wrap' },
+  return el('div', { class: 'grid grid-cols-2 gap-1.5' },
     options.map(([id, label]) => el('div', {
-      class: 'seg tappable' + (e.type === id ? ' seg--on' : ''),
-      text: label,
+      class: 'flex items-center gap-[9px] min-w-0 py-[13px] px-3 rounded-key '
+        + 'font-ui font-semibold text-[12.5px] normal-nums ' + TAP
+        + (e.type === id ? ' bg-ink text-bg' : ' bg-soft text-ink2'),
       onClick: () => patch({ type: id })
-    }))
+    }, [
+      icon(TYPE_ICON[id] || KIND_ICON[id] || 'wallet', 17),
+      el('span', { class: ELLIP, text: label })
+    ]))
   );
 }
 
 function swatches(e) {
-  return el('div', { class: 'swatches' },
+  return el('div', { class: 'grid grid-cols-8 gap-[7px]' },
     SWATCHES.map(c => el('div', {
-      class: 'swatch tappable' + (e.color === c ? ' swatch--on' : ''),
+      class: 'aspect-square rounded-[9px] grid place-items-center '
+        + 'text-[var(--onCat)] ' + TAP
+        + (e.color === c ? ' shadow-[0_0_0_2px_var(--bg),0_0_0_4px_var(--ink)]' : ''),
+      dataset: { testid: 'swatch' },
       style: { background: c },
       onClick: () => patch({ color: c })
     }, [e.color === c ? icon('check', 13, { weight: 2.6 }) : null].filter(Boolean)))
@@ -77,15 +102,17 @@ function iconPicker(e) {
   if (q) names = Object.keys(LUCIDE).filter(n => n.includes(q));
   else names = (ICON_GROUPS.find(g => g.label === active) || ICON_GROUPS[0]).names;
 
-  return el('div', { class: 'iconpick' }, [
+  return el('div', {}, [
     el('input', {
       id: 'icon-search',
-      class: 'iconpick__search',
+      class: 'w-full bg-soft border-none outline-none rounded-box py-[11px] '
+        + 'px-[13px] font-ui font-medium text-[13px] text-ink mb-2.5 normal-nums '
+        + 'placeholder:text-ink3',
       value: store.ui.iconQuery || '',
       placeholder: 'Search icons',
       onInput: (ev) => store.set({ iconQuery: ev.target.value })
     }),
-    el('div', { class: 'chiprow chiprow--flush' },
+    el('div', { class: CHIPROW_FLUSH, dataset: { testid: 'chiprow' } },
       ICON_GROUPS.map(g => chip(
         g.label,
         !q && active === g.label,
@@ -93,19 +120,24 @@ function iconPicker(e) {
       ))
     ),
     names.length
-      ? el('div', { class: 'icongrid' },
+      ? el('div', { class: 'grid grid-cols-6 gap-1.5 mt-2.5' },
         names.map(n => el('div', {
-          class: 'icongrid__cell tappable' + (e.icon === n ? ' icongrid__cell--on' : ''),
+          class: 'aspect-square grid place-items-center rounded-chip ' + TAP
+            + (e.icon === n ? ' bg-ink text-bg' : ' bg-soft text-ink2'),
+          dataset: { testid: 'icongrid-cell' },
           onClick: () => patch({ icon: n })
         }, [icon(n, 19)]))
       )
-      : el('div', { class: 'iconpick__empty', text: 'No icon called “' + q + '”' })
+      : el('div', {
+        class: 'py-5 text-center font-ui font-medium text-[12px] text-ink3 normal-nums',
+        text: 'No icon called “' + q + '”'
+      })
   ]);
 }
 
 /** Accounts only: attach a payment-network logo, or none. */
 function brandRow(e) {
-  return el('div', { class: 'chiprow chiprow--flush' }, [
+  return el('div', { class: CHIPROW_FLUSH, dataset: { testid: 'chiprow' } }, [
     chip('No logo', !e.brand, () => patch({ brand: null })),
     ...BRAND_KEYS.map(k => chip(
       k === 'mastercard' ? 'MC' : k[0].toUpperCase() + k.slice(1),
@@ -120,14 +152,14 @@ function brandRow(e) {
 function accountFields(e) {
   return [
     fieldLabel('Currency'),
-    el('div', { class: 'chiprow chiprow--flush' },
+    el('div', { class: CHIPROW_FLUSH, dataset: { testid: 'chiprow' } },
       ['BDT', 'USD'].map(c => chip(c, e.currency === c, () => patch({ currency: c })))
     ),
 
     fieldLabel('Opening balance'),
     el('input', {
       id: 'entity-initial',
-      class: 'entity__field',
+      class: FIELD,
       inputmode: 'decimal',
       value: String(e.initial === undefined ? 0 : e.initial),
       onInput: (ev) => { store.ui.editEntity.initial = parseFloat(ev.target.value || '0') || 0; }
@@ -145,7 +177,7 @@ export function renderEntitySheet() {
   const isAccount = e.kind === 'account';
   const armed = store.ui.confirmDelete;
 
-  const body = el('div', { class: 'sheet__body' }, [
+  const body = el('div', { class: SHEET_BODY, dataset: { testid: 'sheet-body' } }, [
     preview(e),
 
     fieldLabel('Type'),
@@ -160,9 +192,10 @@ export function renderEntitySheet() {
     iconPicker(e)
   ]);
 
-  const foot = el('div', { class: 'sheet__foot' }, [
+  const foot = el('div', { class: SHEET_FOOT }, [
     el('div', {
-      class: 'savebtn savebtn--ready tappable',
+      class: SAVEBTN + ' bg-accent text-accent-ink ' + TAP,
+      dataset: { testid: 'savebtn', ready: '1' },
       text: (e.isNew ? 'Add ' : 'Save ') + (isAccount ? 'account' : 'category'),
       onClick: async () => {
         const name = (store.ui.editEntity.name || '').trim();
@@ -182,7 +215,9 @@ export function renderEntitySheet() {
     e.isNew
       ? null
       : el('div', {
-        class: 'delbtn delbtn--wide tappable' + (armed ? ' delbtn--armed' : ''),
+        class: DELBTN_WIDE + ' ' + TAP
+          + (armed ? ' bg-danger text-white' : ' bg-soft text-ink2'),
+        dataset: { testid: 'delbtn', armed: armed ? '1' : '0' },
         text: armed ? 'Tap again to delete' : 'Delete',
         onClick: async () => {
           if (!armed) { store.set({ confirmDelete: true }); return; }
@@ -197,10 +232,10 @@ export function renderEntitySheet() {
       })
   ].filter(Boolean));
 
-  return el('div', { class: 'sheet sheet--entity' }, [
-    el('div', { class: 'sheet__head' }, [
+  return el('div', { class: SHEET + ' max-h-[92%]' }, [
+    el('div', { class: SHEET_HEAD }, [
       el('div', {
-        class: 'sheet__title',
+        class: SHEET_TITLE,
         text: (e.isNew ? 'New ' : 'Edit ') + (isAccount ? 'account' : 'category')
       })
     ]),

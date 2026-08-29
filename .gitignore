@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Vite build output - this is what Capacitor copies into the APK
+dist/
+
 # Browser profile used by the screenshot script
 .chrome.tmp/
 .chrome*.tmp/

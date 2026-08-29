@@ -10,6 +10,26 @@ import {
   bar, dot, tab, accountChip
 } from '../ui/components.js';
 import { TREND_HISTORY } from '../data/seed.js';
+import { ROW, ROW_BODY, ROW_TITLE, ROW_RIGHT, ROW_AMT, ROW_SUB, ELLIP, TAP, MICROLABEL } from '../ui/styles.js';
+
+/* Recipes used more than once on this screen. */
+const LEGEND_ITEM = 'flex items-center gap-2 min-w-0';
+// In a legend ROW the name does not flex and is a shade smaller: that was
+// `.legendrow .legend__name`, a descendant rule with no ancestor left.
+const LEGEND_NAME = 'font-ui font-medium text-[12px]/[1] text-ink2 min-w-0';
+const LEGEND_NAME_ROW = 'font-ui font-medium text-[11px]/[1] text-ink2 min-w-0 flex-none';
+// No margin in the recipe: `.canvashead .legendrow { margin-bottom: 0 }` used
+// to zero it inside the chart head, and an `mb-0` utility cannot beat
+// `mb-[14px]` the way that descendant rule beat `.legendrow`. The callers that
+// want the gap ask for it.
+const LEGENDROW = 'flex gap-4';
+const KVROW = 'flex items-center justify-between gap-3 py-[15px] border-b border-line';
+const KVROW_K = 'font-ui font-medium text-[14px]/[1] text-ink2 normal-nums';
+const KVROW_V = 'font-ui font-bold text-[14.5px]/[1] whitespace-nowrap normal-nums';
+const CANVAS_BAR = 'flex-1 min-w-[3px] rounded-pill h-[var(--target,0)] '
+  + '[animation:growHeight_var(--dur-short)_var(--ease-enter)_both]';
+const TREND_BAR = 'w-[13px] rounded-pill h-[var(--target,0)] '
+  + '[animation:growHeight_var(--dur-short)_var(--ease-enter)_both]';
 
 const HOME_CURRENCY = 'BDT';
 
@@ -29,7 +49,7 @@ const RAMP = [
 ];
 
 function tabStrip() {
-  return el('div', { class: 'tabs tabs--scroll' },
+  return el('div', { class: 'flex gap-5 border-b border-line mb-4 overflow-x-auto noscrollbar' },
     TABS.map(([id, label]) =>
       tab(label, store.ui.reportTab === id, () => store.set({ reportTab: id }))
     )
@@ -51,30 +71,36 @@ function barCanvas() {
   const max = Math.max(...series, 1);
   const active = series.filter(v => v > 0).sort((a, b) => a - b);
 
-  return el('div', { class: 'canvas' }, series.map(v => {
+  return el('div', {
+    class: 'flex items-end gap-[3px] h-[190px] mb-4'
+  }, series.map(v => {
     if (v <= 0) {
-      // A day with nothing spent is a stub, not a short bar.
-      const stub = el('div', { class: 'canvas__bar canvas__bar--empty' });
+      // A day with nothing spent is a stub in the track tint, not a short bar -
+      // it must not read as a small amount of money.
+      const stub = el('div', { class: CANVAS_BAR + ' bg-soft' });
       setTarget(stub, '4%');
       return stub;
     }
     const rank = active.length < 2 ? 1 : active.indexOf(v) / (active.length - 1);
     const step = Math.min(RAMP.length - 1, Math.floor(rank * RAMP.length));
 
-    const node = el('div', { class: 'canvas__bar', style: { background: RAMP[step] } });
+    const node = el('div', { class: CANVAS_BAR, style: { background: RAMP[step] } });
     setTarget(node, Math.max(10, Math.sqrt(v / max) * 100) + '%');
     return node;
   }));
 }
 
 function canvasHead() {
-  const item = (color, label) => el('div', { class: 'legend__item' }, [
+  const item = (color, label) => el('div', { class: LEGEND_ITEM }, [
     dot(color),
-    el('div', { class: 'legend__name', text: label })
+    el('div', { class: LEGEND_NAME_ROW, text: label })
   ]);
-  return el('div', { class: 'canvashead' }, [
-    el('div', { class: 'canvashead__k', text: 'Money out per day' }),
-    el('div', { class: 'legendrow' }, [
+  return el('div', {
+    class: 'flex items-center justify-between flex-wrap gap-y-2.5 gap-x-4 mb-[14px]'
+  }, [
+    el('div', { class: MICROLABEL, text: 'Money out per day' }),
+    // mb-0: this legend sits inside the head, which owns the spacing.
+    el('div', { class: LEGENDROW }, [
       item(RAMP[0], 'Light'),
       item(RAMP[2], 'Steady'),
       item(RAMP[4], 'Heavy')
@@ -83,8 +109,10 @@ function canvasHead() {
 }
 
 function rangeStrip() {
-  return el('div', { class: 'ranges' }, RANGES.map(r => el('div', {
-    class: 'range tappable' + (store.ui.range === r ? ' range--on' : ''),
+  return el('div', { class: 'flex gap-1.5 mb-1.5' }, RANGES.map(r => el('div', {
+    class: 'flex-1 text-center py-[9px] rounded-pill font-ui font-semibold '
+      + 'text-[11.5px] normal-nums ' + TAP
+      + (store.ui.range === r ? ' bg-soft text-ink' : ' bg-transparent text-ink3'),
     text: r,
     onClick: () => store.set({ range: r })
   })));
@@ -97,16 +125,16 @@ function summaryRows() {
 
   const rows = [
     ['Total balance', fmt(store.netWorth(), HOME_CURRENCY), ''],
-    ['Money in · ' + month, '+' + fmt(totals.income, HOME_CURRENCY), ' kvrow__v--pos'],
-    ['Money out · ' + month, MINUS + fmt(totals.expense, HOME_CURRENCY), ''],
+    ['Money in · ' + month, '+' + fmt(totals.income, HOME_CURRENCY), ' text-pos'],
+    ['Money out · ' + month, MINUS + fmt(totals.expense, HOME_CURRENCY), ' text-danger'],
     ['Net this month', signed(totals.net, HOME_CURRENCY),
-      totals.net >= 0 ? ' kvrow__v--pos' : ' kvrow__v--neg'],
+      totals.net >= 0 ? ' text-pos' : ' text-danger'],
     ['Average daily spend', fmt(perDay, HOME_CURRENCY), '']
   ];
 
-  return rows.map(([k, v, mod]) => el('div', { class: 'kvrow' }, [
-    el('div', { class: 'kvrow__k', text: k }),
-    el('div', { class: 'kvrow__v' + mod, text: v })
+  return rows.map(([k, v, mod]) => el('div', { class: KVROW }, [
+    el('div', { class: KVROW_K, text: k }),
+    el('div', { class: KVROW_V + (mod || ' text-ink'), text: v })
   ]));
 }
 
@@ -132,14 +160,24 @@ function donut(totals, sum) {
     return `${x.cat.color} ${from.toFixed(2)}% ${((acc / sum) * 100).toFixed(2)}%`;
   });
 
-  const ring = el('div', { class: 'donut__ring' });
+  const ring = el('div', { class: 'absolute inset-0 rounded-full' });
   if (sum > 0) ring.style.background = `conic-gradient(${stops.join(',')})`;
 
-  return el('div', { class: 'donut' }, [
+  return el('div', { class: 'relative flex-none w-[126px] h-[126px] rounded-full' }, [
     ring,
-    el('div', { class: 'donut__hole' }, [
-      el('div', { class: 'donut__total', text: compact(sum, HOME_CURRENCY) }),
-      el('div', { class: 'donut__cap', text: 'spent' })
+    el('div', {
+      class: 'absolute inset-[26px] bg-surface rounded-full flex flex-col '
+        + 'items-center justify-center'
+    }, [
+      el('div', {
+        class: 'font-ui font-bold text-[15px]/[1] text-ink tracking-[-.02em] normal-nums',
+        text: compact(sum, HOME_CURRENCY)
+      }),
+      el('div', {
+        class: 'font-ui font-bold text-[8.5px]/[1] text-ink3 mt-1.5 uppercase '
+          + 'tracking-[.14em] normal-nums',
+        text: 'spent'
+      })
     ])
   ]);
 }
@@ -156,22 +194,32 @@ function budgetVsActual() {
     const over = used > b.limit;
 
     const actual = el('div', {
-      class: 'bva__actual',
+      class: 'absolute left-0 top-0 bottom-0 w-[var(--target,0)] '
+        + '[animation:growWidth_var(--dur-short)_var(--ease-enter)_both]',
       style: { background: over ? 'var(--danger)' : category.color }
     });
     setTarget(actual, (used / scale) * 100 + '%');
 
-    return el('div', { class: 'bva' }, [
-      el('div', { class: 'bva__head' }, [
-        el('div', { class: 'bva__name ellip', text: category.name }),
+    return el('div', { class: 'py-[13px] border-b border-line' }, [
+      el('div', { class: 'flex justify-between gap-2 mb-2.5' }, [
         el('div', {
-          class: 'bva__text',
+          class: 'font-ui font-semibold text-[13.5px]/[1] text-ink min-w-0 '
+            + 'normal-nums ' + ELLIP,
+          text: category.name
+        }),
+        el('div', {
+          class: 'font-ui font-medium text-[11px]/[1] text-ink3 whitespace-nowrap normal-nums',
           text: fmt(used, HOME_CURRENCY) + ' / ' + fmt(b.limit, HOME_CURRENCY)
         })
       ]),
-      el('div', { class: 'bva__track' }, [
+      el('div', {
+        class: 'relative h-[5px] rounded-pill overflow-hidden bg-soft'
+      }, [
         actual,
-        el('div', { class: 'bva__mark', style: { left: (b.limit / scale) * 100 + '%' } })
+        el('div', {
+          class: 'absolute top-0 bottom-0 w-[3px] bg-ink',
+          style: { left: (b.limit / scale) * 100 + '%' }
+        })
       ])
     ]);
   });
@@ -182,17 +230,20 @@ function categoriesTab() {
   const sum = totals.reduce((s, x) => s + x.value, 0);
 
   return [
-    el('div', { class: 'donutwrap' }, [
+    el('div', { class: 'flex items-center gap-5 mb-1.5' }, [
       donut(totals, sum),
-      el('div', { class: 'legend' },
-        totals.slice(0, 6).map(x => el('div', { class: 'legend__item' }, [
+      el('div', { class: 'flex-1 flex flex-col gap-2.5 min-w-0' },
+        totals.slice(0, 6).map(x => el('div', { class: LEGEND_ITEM }, [
           dot(x.cat.color),
-          el('div', { class: 'legend__name ellip', text: x.cat.name }),
-          el('div', { class: 'legend__pct', text: pct(x.value, sum) + '%' })
+          el('div', { class: LEGEND_NAME + ' flex-1 ' + ELLIP, text: x.cat.name }),
+          el('div', {
+            class: 'font-ui font-bold text-[11.5px]/[1] text-ink flex-none normal-nums',
+            text: pct(x.value, sum) + '%'
+          })
         ]))
       )
     ]),
-    el('div', { class: 'fieldlabel fieldlabel--gap', text: 'Budget vs actual' }),
+    el('div', { class: MICROLABEL + ' mt-[26px] mb-2', text: 'Budget vs actual' }),
     ...budgetVsActual()
   ];
 }
@@ -200,18 +251,18 @@ function categoriesTab() {
 /* ---------------- accounts ---------------- */
 
 function accountsTab() {
-  return store.accountCards().map(a => el('div', { class: 'row' }, [
+  return store.accountCards().map(a => el('div', { class: ROW, dataset: { testid: 'row' } }, [
     accountChip(a),
-    el('div', { class: 'row__body' }, [
-      el('div', { class: 'row__title ellip', text: a.name }),
+    el('div', { class: ROW_BODY }, [
+      el('div', { class: ROW_TITLE + ' ' + ELLIP, text: a.name }),
       bar(a.share, a.homeValue < 0 ? 'var(--danger)' : 'var(--accent)', true)
     ]),
-    el('div', { class: 'row__right' }, [
-      el('div', { class: 'row__amt', text: fmt(a.balance, a.currency) }),
+    el('div', { class: ROW_RIGHT }, [
+      el('div', { class: ROW_AMT, text: fmt(a.balance, a.currency) }),
       a.currency === HOME_CURRENCY
         ? null
-        : el('div', { class: 'row__sub', text: '≈ ' + fmt(a.homeValue, HOME_CURRENCY) }),
-      el('div', { class: 'row__sub', text: Math.round(a.share) + '% of total' })
+        : el('div', { class: ROW_SUB, text: '≈ ' + fmt(a.homeValue, HOME_CURRENCY) }),
+      el('div', { class: ROW_SUB, text: Math.round(a.share) + '% of total' })
     ].filter(Boolean))
   ]));
 }
@@ -226,31 +277,55 @@ function monthsTab() {
   const max = Math.max(...data.map(d => Math.max(d.income, d.expense))) || 1;
 
   const columns = data.map(d => {
-    const inBar = el('div', { class: 'trend__bar trend__bar--in' });
-    const outBar = el('div', { class: 'trend__bar trend__bar--out' });
+    const inBar = el('div', { class: TREND_BAR + ' bg-accent' });
+    const outBar = el('div', { class: TREND_BAR + ' bg-ink2' });
     setTarget(inBar, Math.max(5, (d.income / max) * 100) + '%');
     setTarget(outBar, Math.max(5, (d.expense / max) * 100) + '%');
 
-    return el('div', { class: 'trend__col' }, [
-      el('div', { class: 'trend__bars' }, [inBar, outBar]),
-      el('div', { class: 'trend__label', text: d.label })
+    return el('div', {
+      class: 'flex-1 flex flex-col items-center gap-[9px] h-full justify-end'
+    }, [
+      el('div', {
+        class: 'flex gap-[3px] items-end h-full w-full justify-center'
+      }, [inBar, outBar]),
+      el('div', {
+        class: 'font-ui font-semibold text-[10px]/[1] text-ink3 normal-nums',
+        text: d.label
+      })
     ]);
   });
 
-  const legend = el('div', { class: 'legendrow' }, [
-    el('div', { class: 'legend__item' }, [dot('var(--accent)'), el('div', { class: 'legend__name', text: 'Income' })]),
-    el('div', { class: 'legend__item' }, [dot('var(--ink2)'), el('div', { class: 'legend__name', text: 'Expense' })])
+  const legend = el('div', { class: LEGENDROW + ' mb-[14px]' }, [
+    el('div', { class: LEGEND_ITEM }, [
+      dot('var(--accent)'), el('div', { class: LEGEND_NAME_ROW, text: 'Income' })
+    ]),
+    el('div', { class: LEGEND_ITEM }, [
+      dot('var(--ink2)'), el('div', { class: LEGEND_NAME_ROW, text: 'Expense' })
+    ])
   ]);
 
-  const rows = data.slice().reverse().map(d => el('div', { class: 'kvrow' }, [
-    el('div', { class: 'kvrow__k kvrow__k--strong', text: d.label + ' ' + store.today.slice(0, 4) }),
-    el('div', { class: 'monthpair' }, [
-      el('div', { class: 'monthpair__in', text: '+' + fmt(d.income, HOME_CURRENCY) }),
-      el('div', { class: 'monthpair__out', text: MINUS + fmt(d.expense, HOME_CURRENCY) })
+  const rows = data.slice().reverse().map(d => el('div', { class: KVROW }, [
+    el('div', {
+      class: 'font-ui font-semibold text-[13.5px]/[1] text-ink normal-nums',
+      text: d.label + ' ' + store.today.slice(0, 4)
+    }),
+    el('div', { class: 'flex gap-[14px]' }, [
+      el('div', {
+        class: 'font-ui font-semibold text-[12.5px]/[1] text-pos normal-nums',
+        text: '+' + fmt(d.income, HOME_CURRENCY)
+      }),
+      el('div', {
+        class: 'font-ui font-semibold text-[12.5px]/[1] text-ink2 normal-nums',
+        text: MINUS + fmt(d.expense, HOME_CURRENCY)
+      })
     ])
   ]));
 
-  return [legend, el('div', { class: 'trend' }, columns), ...rows];
+  return [
+    legend,
+    el('div', { class: 'flex items-end gap-3 h-[172px] mb-[18px]' }, columns),
+    ...rows
+  ];
 }
 
 /* ---------------- screen ---------------- */

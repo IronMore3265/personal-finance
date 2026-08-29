@@ -79,6 +79,9 @@ const KEY_REGIONS = {
 
   entryType: ['sheet'],
   entryCat: ['sheet'],
+  entryCatOpen: ['sheet'],
+  keypadOpen: ['sheet'],
+  dateOpen: ['sheet'],
   entryAccount: ['sheet'],
   entryGroup: ['sheet'],
   entryCurrency: ['sheet'],
@@ -91,6 +94,10 @@ const KEY_REGIONS = {
   confirmDelete: ['sheet'],
   editEntity: ['sheet'],
   editDebt: ['sheet'],
+  recGroup: ['sheet'],
+  recCatOpen: ['sheet'],
+  recDateOpen: ['sheet'],
+  debtDateOpen: ['sheet'],
   editRecurring: ['sheet'],
   syncMode: ['sheet'],
   syncEmail: ['sheet'],
@@ -138,9 +145,12 @@ class Store {
       entryAmount: '',        // digits being typed
       entryExpr: [],          // completed calculator tokens
       entryValue: 0,          // last good value of the expression
-      entryAccount: 'a1',
+      entryAccount: null,     // nothing preselected: the account gates the rest
       entryGroup: null,       // expanded account-type group, null = collapsed
-      entryCat: 'c1',
+      entryCat: null,
+      entryCatOpen: false,    // category grid expanded, or folded to the choice
+      keypadOpen: false,      // the keys are only up while a number is entered
+      dateOpen: false,        // the date wheel is over the sheet
       entryCurrency: 'BDT',
       entryRate: '122',
       entryNote: '',
@@ -152,6 +162,10 @@ class Store {
 
       editEntity: null,       // category / account editor payload
       editDebt: null,
+      recGroup: null,       // expanded account group in the recurring sheet
+      recCatOpen: false,    // its category grid expanded, or folded
+      recDateOpen: false,   // the recurring sheet's date panel
+      debtDateOpen: false,  // the debt sheet's date panel
       editRecurring: null,
       iconQuery: '',
       iconGroup: null,
@@ -529,6 +543,9 @@ class Store {
       entryAccount: t.account,
       entryGroup: null,
       entryCat: t.cat,
+      entryCatOpen: false,
+      keypadOpen: false,
+      dateOpen: false,
       entryCurrency: t.currency,
       entryRate: String(t.rate || 1),
       entryNote: t.note || '',
@@ -552,7 +569,12 @@ class Store {
       entryItems: [],
       entryFocusItem: null,
       entrySource: 'manual',
+      entryAccount: null,
       entryGroup: null,
+      entryCat: null,
+      entryCatOpen: false,
+      keypadOpen: false,
+      dateOpen: false,
       confirmDelete: false,
       ...patch
     };
@@ -571,7 +593,13 @@ class Store {
     const amount = this.entryTotal();
     if (!amount) { this.say('Enter an amount first'); return; }
 
+    // Neither is preselected any more, and the sheet hides the category grid
+    // until an account is picked, so both can genuinely be missing here.
     const account = this.acct(this.ui.entryAccount);
+    if (!account) { this.say('Pick an account first'); return; }
+    const cat = this.cat(this.ui.entryCat);
+    if (!cat) { this.say('Pick a category first'); return; }
+
     const needsRate = this.ui.entryCurrency !== account.currency;
     const items = this.ui.entryItems.filter(it => Number(it.amount) > 0);
 
@@ -584,7 +612,7 @@ class Store {
       currency: this.ui.entryCurrency,
       rate: needsRate ? parseFloat(this.ui.entryRate || '1') : 1,
       date: this.ui.entryDate || this.today,
-      note: this.ui.entryNote || this.cat(this.ui.entryCat).name,
+      note: this.ui.entryNote || cat.name,
       source: this.ui.entrySource || 'manual'
     };
 
@@ -629,7 +657,16 @@ class Store {
   addItem() {
     const id = 'li' + Date.now() + Math.random().toString(36).slice(2, 6);
     const items = this.ui.entryItems.concat({ id, label: '', qty: 1, amount: 0 });
-    this.set({ entryItems: items, entryFocusItem: id, entryAmount: '', entryExpr: [] });
+    // A new row exists to have an amount typed into it, so the keys come up
+    // with it and are pointed at that row.
+    this.set({
+      entryItems: items,
+      entryFocusItem: id,
+      keypadOpen: true,
+      dateOpen: false,
+      entryAmount: '',
+      entryExpr: []
+    });
   }
 
   patchItem(id, patch, silent = false) {
@@ -639,9 +676,12 @@ class Store {
 
   removeItem(id) {
     const items = this.ui.entryItems.filter(it => it.id !== id);
+    const wasFocused = this.ui.entryFocusItem === id;
     this.set({
       entryItems: items,
-      entryFocusItem: this.ui.entryFocusItem === id ? null : this.ui.entryFocusItem,
+      entryFocusItem: wasFocused ? null : this.ui.entryFocusItem,
+      // The keys were driving the row that just went away.
+      keypadOpen: wasFocused ? false : this.ui.keypadOpen,
       entryAmount: '',
       entryExpr: []
     });
@@ -691,7 +731,12 @@ class Store {
 
     await repo.deleteAccount(id);
     this.db.accounts = this.db.accounts.filter(a => a.id !== id);
-    if (this.ui.entryAccount === id) this.ui.entryAccount = this.db.accounts[0].id;
+    // Back to unpicked rather than to some other account, which would silently
+    // file the open draft against a wallet the user never chose.
+    if (this.ui.entryAccount === id) {
+      this.ui.entryAccount = null;
+      this.ui.entryCat = null;
+    }
     this.touch();
     this.emit(['header', 'body', 'sheet']);
     this.say('Account deleted');
@@ -904,7 +949,6 @@ class Store {
 
     let next;
     if (label === 'del') next = calc.pressDelete(expr, buf);
-    else if (label === '=') next = calc.pressEquals(expr, buf);
     else if (label === 'clear') next = calc.clear();
     else if (calc.OPS.includes(label)) next = calc.pressOp(expr, buf, label);
     else next = calc.pressDigit(expr, buf, label);

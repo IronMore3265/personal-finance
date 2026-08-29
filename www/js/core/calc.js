@@ -81,13 +81,6 @@ export function pressOp(expr, buf, op) {
   return { expr: expr.slice(0, -1).concat(op), buf: '' };
 }
 
-/** Collapse everything to a single value. A trailing operator is dropped. */
-export function pressEquals(expr, buf) {
-  const value = fold(expr, buf);
-  if (value === null) return { expr, buf };
-  return { expr: [], buf: value === 0 ? '' : trim(value) };
-}
-
 /**
  * One step back. Inside a number that is one digit; at a number's start it is
  * the operator before it.

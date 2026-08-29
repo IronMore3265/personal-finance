@@ -1,0 +1,90 @@
+/* The one stylesheet index.html links. Order matters: Tailwind first so its
+   layers are declared, then the app's own three files.
+
+   app.css is pulled in as `layer(components)` rather than plain CSS. That is
+   what keeps a utility able to beat a component class - `class="row__amt
+   text-danger"` behaves the way you would expect - without any !important and
+   without touching a single existing rule. */
+
+/* Deliberately NOT the `@import "tailwindcss"` one-liner: that pulls in
+   Preflight, and this app already ships its own reset at the top of app.css -
+   box-sizing, the html/body margin zeroing, the button and input normalisation.
+   Running both moved real pixels (the sms sheet shifted 1px and the row chips
+   re-rendered), so Tailwind contributes its theme and its utilities and the
+   app keeps owning its base layer. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@import "./fonts.css";
+@import "./tokens.css";
+@import "./app.css" layer(components);
+
+/* The app owns its theme: store.toggleDark() writes data-dark on <html>, and
+   tokens.css keys :root[data-dark="1"] off it. Tailwind's stock `dark:` variant
+   follows prefers-color-scheme instead, which would disagree with the app's own
+   toggle the moment a user overrode the system. So it is redefined to read the
+   same attribute the rest of the app reads. */
+@custom-variant dark (&:where([data-dark="1"], [data-dark="1"] *));
+
+/* Alias the existing custom properties into Tailwind's namespaces.
+
+   `@theme inline` is the whole trick: it makes the generated utility emit
+   `var(--accent)` rather than baking in `#d8f24a`, so :root[data-dark="1"]
+   keeps driving the utilities and the hand-written rules from one place. A
+   plain `@theme` would freeze the light value into every utility and dark mode
+   would silently stop applying to anything written in Tailwind.
+
+   Only tokens worth writing utilities against are listed. --page, --shell,
+   --cardBg and the chart ramp stay CSS-only; they have exactly one consumer
+   each and a `bg-page` utility would just be indirection. */
+@theme inline {
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accentInk);
+  --color-accent-soft: var(--accentSoft);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-soft: var(--soft);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink2: var(--ink2);
+  --color-ink3: var(--ink3);
+  --color-pos: var(--pos);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--dangerSoft);
+
+  --radius-chip: var(--r-chip);
+  --radius-key: var(--r-key);
+  --radius-box: var(--r-box);
+  --radius-card: var(--r-card);
+  --radius-sheet: var(--r-sheet);
+  --radius-pill: var(--r-pill);
+
+  --font-ui: var(--ui);
+  --font-code: var(--code);
+
+  --ease-enter: var(--ease-enter);
+  --ease-exit: var(--ease-exit);
+  --ease-move: var(--ease-move);
+  --ease-sheet: var(--ease-sheet);
+}
+
+/* Things the utility layer cannot express, defined as real utilities so they
+   compose and override like any other rather than sitting in a components
+   layer that utilities would beat. */
+
+/* Hiding a scrollbar needs a vendor pseudo-element, which has no utility. */
+@utility noscrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
+
+/* The bar fill animates from zero to a width published as --target, so the
+   final size is a matter of style: if the animation never runs - reduced
+   motion, a throttled tab - the bar is still the right length. */
+@utility trackfill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  width: var(--target, 0);
+  animation: growWidth var(--dur-short) var(--ease-enter) both;
+}

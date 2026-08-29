@@ -126,16 +126,6 @@ export function icon(name, size = 18, opts = {}) {
   return svg;
 }
 
-/** Round icon button: a soft disc with a stroke glyph in it. */
-export function iconButton(name, onClick, opts = {}) {
-  const node = document.createElement('div');
-  node.className = 'iconbtn tappable' + (opts.lime ? ' iconbtn--lime' : '') +
-    (opts.big ? ' iconbtn--big' : '');
-  node.appendChild(icon(name, opts.size || 17, { weight: opts.weight }));
-  if (onClick) node.addEventListener('click', onClick);
-  return node;
-}
-
 /**
  * Account sparkline. Points come from the store as a real balance history, so
  * a flat account draws a flat line rather than invented noise.
@@ -146,7 +136,8 @@ export function sparkline(points, color) {
   svg.setAttribute('height', 20);
   svg.setAttribute('viewBox', '0 0 52 20');
   svg.setAttribute('fill', 'none');
-  svg.setAttribute('class', 'spark');
+  svg.setAttribute('class', 'flex-none');
+  svg.setAttribute('data-testid', 'spark');
 
   const line = document.createElementNS(NS, 'polyline');
   line.setAttribute('points', points);

@@ -2,9 +2,10 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * The app has no build step, so Chromium runs byte-identical source to the
- * APK. What it does not cover is the SQLite driver and the Capacitor plugins -
- * the browser takes the localStorage path instead. See tests/README.md.
+ * Chromium runs the same sources the APK is built from, through the same Vite
+ * pipeline - `vite` here, `vite build` for dist/. What it does not cover is the
+ * SQLite driver and the Capacitor plugins - the browser takes the localStorage
+ * path instead. See tests/README.md.
  */
 export default defineConfig({
   testDir: './tests',
@@ -30,7 +31,7 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'node scripts/serve.js',
+    command: 'npx vite',
     url: 'http://localhost:5173',
     reuseExistingServer: true,
     timeout: 30000

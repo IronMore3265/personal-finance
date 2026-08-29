@@ -12,6 +12,13 @@ import { repo } from '../data/repo.js';
 import { supabase } from '../data/supabase.js';
 import { sync } from '../data/sync.js';
 import { exportCsv, backupDatabase } from '../core/exporter.js';
+import { TAP } from '../ui/styles.js';
+
+/* Recipes used by more than one row on this screen. */
+const SETROW = 'flex items-center gap-3 py-[15px] border-b border-line';
+const SETROW_BODY = 'flex-1 min-w-0';
+const SETROW_TITLE = 'font-ui font-semibold text-[14px]/[1] text-ink normal-nums';
+const SETROW_SUB = 'font-ui font-medium text-[11px]/[1.5] text-ink3 mt-[7px] normal-nums';
 
 /** One line describing where sync has got to, for the Settings row. */
 function syncSummary() {
@@ -31,21 +38,24 @@ function syncSummary() {
 
 /** Rounded-square tile carrying the row icon. Lime marks the shipping path. */
 function tile(name, lime) {
-  return el('div', { class: 'tile' + (lime ? ' tile--lime' : '') }, [icon(name, 16)]);
+  return el('div', {
+    class: 'flex-none w-[34px] h-[34px] rounded-[11px] flex items-center '
+      + 'justify-center ' + (lime ? 'bg-accent text-accent-ink' : 'bg-soft text-ink')
+  }, [icon(name, 16)]);
 }
 
 function settingRow({ glyph, lime, title, sub, trailing, onClick }) {
-  return el('div', { class: 'setrow' + (onClick ? ' tappable' : ''), onClick }, [
+  return el('div', { class: SETROW + (onClick ? ' ' + TAP : ''), onClick }, [
     glyph ? tile(glyph, lime) : null,
-    el('div', { class: 'setrow__body' }, [
-      el('div', { class: 'setrow__title', text: title }),
-      sub ? el('div', { class: 'setrow__sub', text: sub }) : null
+    el('div', { class: SETROW_BODY }, [
+      el('div', { class: SETROW_TITLE, text: title }),
+      sub ? el('div', { class: SETROW_SUB, text: sub }) : null
     ].filter(Boolean)),
     trailing || null
   ].filter(Boolean));
 }
 
-const chevron = () => icon('chevronRight', 15, { weight: 2, class: 'chev' });
+const chevron = () => icon('chevronRight', 15, { weight: 2, class: 'text-ink3 flex-none' });
 
 function appearance() {
   return [
@@ -59,7 +69,11 @@ function appearance() {
     settingRow({
       glyph: 'coin',
       title: 'Home currency',
-      trailing: el('div', { class: 'setrow__val', text: 'BDT · ৳' })
+      trailing: el('div', {
+        class: 'font-ui font-bold text-[12.5px]/[1] text-ink2 whitespace-nowrap '
+          + 'flex-none normal-nums',
+        text: 'BDT · ৳'
+      })
     })
   ];
 }
@@ -93,50 +107,71 @@ function library() {
 }
 
 function smsCapture() {
-  const live = el('div', { class: 'setrow setrow--stack' }, [
-    el('div', { class: 'setrow__line' }, [
+  const live = el('div', { class: 'block py-[15px] border-b border-line' }, [
+    el('div', { class: 'flex items-center gap-3' }, [
       tile('robot'),
-      el('div', { class: 'setrow__body' }, [
-        el('div', { class: 'setrow__title', text: 'Live SMS listener' }),
+      el('div', { class: SETROW_BODY }, [
+        el('div', { class: SETROW_TITLE, text: 'Live SMS listener' }),
         el('div', {
-          class: 'setrow__sub',
+          class: SETROW_SUB,
           text: 'Drafts transactions from incoming messages'
         })
       ]),
       toggle(store.ui.smsLive, () => store.toggleSmsLive())
     ]),
-    el('div', { class: 'warn' + (store.ui.smsLive ? ' warn--live' : '') }, [
+    el('div', {
+      class: 'mt-[13px] p-[13px] rounded-2xl '
+        + (store.ui.smsLive ? 'bg-accent-soft' : 'bg-soft')
+    }, [
       el('div', {
-        class: 'warn__text',
+        class: 'font-ui font-medium text-[11.5px]/[1.5] text-ink normal-nums',
         text: 'Requires READ_SMS. Play Store restricts it — a build with the ' +
           'listener on is likely to be rejected. Intended for sideloaded personal use.'
       })
     ])
   ]);
 
-  const rules = el('div', { class: 'ruleblock' }, [
-    el('div', { class: 'ruleblock__head' }, [
-      el('div', { class: 'setrow__title', text: 'Parse rules' }),
-      el('div', { class: 'section__meta', text: store.db.rules.length + ' active' })
+  const rules = el('div', { class: 'pt-[15px] pb-1' }, [
+    el('div', { class: 'flex justify-between items-center gap-2' }, [
+      el('div', { class: SETROW_TITLE, text: 'Parse rules' }),
+      el('div', {
+        class: 'font-ui font-semibold text-[10px]/[1] text-ink3 uppercase '
+          + 'tracking-[.1em] whitespace-nowrap normal-nums',
+        text: store.db.rules.length + ' active'
+      })
     ]),
-    ...store.db.rules.map(r => el('div', { class: 'rule' }, [
-      el('div', { class: 'rule__head' }, [
-        el('div', { class: 'rule__sender', text: r.sender }),
+    ...store.db.rules.map(r => el('div', { class: 'py-3 border-b border-line' }, [
+      el('div', { class: 'flex justify-between gap-2' }, [
         el('div', {
-          class: 'rule__map',
+          class: 'font-ui font-bold text-[12px]/[1] text-ink normal-nums',
+          text: r.sender
+        }),
+        el('div', {
+          class: 'font-ui font-medium text-[10.5px]/[1] text-ink3 whitespace-nowrap normal-nums',
           text: (store.acct(r.account) || {}).name + ' · ' + r.type
         })
       ]),
-      el('div', { class: 'rule__pattern', text: '/' + r.pattern + '/i' })
+      // --code, not --ui: this is the one place a regex is shown verbatim.
+      el('div', {
+        class: 'font-code font-normal text-[10.5px]/[1.5] text-ink2 mt-2 '
+          + 'break-all normal-nums',
+        text: '/' + r.pattern + '/i'
+      })
     ])),
     el('div', {
-      class: 'addrule tappable',
+      class: 'flex items-center gap-[7px] mt-[14px] text-ink ' + TAP,
       onClick: () => store.say('Rule editor lands in the next pass')
     }, [
-      el('div', { class: 'roundbtn roundbtn--lime roundbtn--small' }, [
+      el('div', {
+        class: 'flex-none w-[26px] h-[26px] rounded-full bg-accent text-accent-ink '
+          + 'flex items-center justify-center'
+      }, [
         icon('plus', 13, { weight: 2.6 })
       ]),
-      el('div', { class: 'addrule__label', text: 'Add rule' })
+      el('div', {
+        class: 'font-ui font-bold text-[11px]/[1] tracking-[.1em] uppercase normal-nums',
+        text: 'Add rule'
+      })
     ])
   ]);
 
@@ -177,7 +212,8 @@ function data() {
       onClick: () => store.set({ sheet: 'sync' })
     }),
     el('div', {
-      class: 'footnote',
+      class: 'font-ui font-medium text-[11px]/[1.6] text-ink3 text-center pt-[22px] '
+        + 'pb-2.5 normal-nums',
       text: 'Paisa v1.0 · ' + repo.backend + ' · ' + store.db.txns.length + ' transactions stored'
     })
   ];

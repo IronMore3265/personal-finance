@@ -69,7 +69,7 @@ const EXTRA = [
   'calendar', 'pencil', 'trash-2', 'x', 'check', 'chevron-down', 'chevron-right',
   'chevron-left', 'plus', 'minus', 'search', 'hand-coins', 'arrow-down-left',
   'arrow-up-right', 'repeat', 'bell', 'wallet', 'landmark', 'credit-card',
-  'smartphone', 'banknote'
+  'smartphone', 'banknote', 'divide', 'delete'
 ];
 
 /** Pull the drawable children out of a lucide SVG file. */
@@ -83,7 +83,7 @@ function parse(name) {
   let m;
   while ((m = tag.exec(svg))) {
     const attrs = {};
-    const attr = /([a-zA-Z-]+)="([^"]*)"/g;
+    const attr = /([a-zA-Z][a-zA-Z0-9_-]*)="([^"]*)"/g;
     let a;
     while ((a = attr.exec(m[2]))) attrs[a[1]] = a[2];
     out.push([m[1], attrs]);

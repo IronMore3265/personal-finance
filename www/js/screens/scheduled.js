@@ -9,28 +9,30 @@ import { fmt, dueLabel } from '../core/format.js';
 import { store } from '../core/store.js';
 import { icon } from '../ui/icons.js';
 import { categoryChip, section, sectionMeta } from '../ui/components.js';
+import { ROW_TAP, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT, ROW_SUB, ELLIP } from '../ui/styles.js';
 
 function row(b) {
   const due = b.nextDue || b.due;
   const mode = b.variable ? 'asks for the amount' : (b.autoPost ? 'posts itself' : 'waits for you');
 
   return el('div', {
-    class: 'row tappable',
+    class: ROW_TAP,
+    dataset: { testid: 'row' },
     onClick: () => store.set({ sheet: 'recurring', editRecurring: { ...b } })
   }, [
     categoryChip(store.cat(b.cat)),
-    el('div', { class: 'row__body' }, [
-      el('div', { class: 'row__title ellip', text: b.name }),
+    el('div', { class: ROW_BODY }, [
+      el('div', { class: ROW_TITLE + ' ' + ELLIP, text: b.name }),
       el('div', {
-        class: 'row__meta ellip',
+        class: ROW_META + ' ' + ELLIP,
         text: b.active === 0
           ? 'Paused'
           : b.freq + ' · ' + dueLabel(due, store.today).toLowerCase() + ' · ' + mode
       })
     ]),
-    el('div', { class: 'row__right' }, [
-      el('div', { class: 'row__amt', text: fmt(b.amount, 'BDT') }),
-      el('div', { class: 'row__sub', text: (store.acct(b.account) || {}).name || '' })
+    el('div', { class: ROW_RIGHT }, [
+      el('div', { class: ROW_AMT + ' text-danger', text: fmt(b.amount, 'BDT') }),
+      el('div', { class: ROW_SUB, text: (store.acct(b.account) || {}).name || '' })
     ])
   ]);
 }
@@ -50,7 +52,8 @@ export function renderScheduled() {
   }
 
   out.push(el('div', {
-    class: 'row tappable',
+    class: ROW_TAP,
+    dataset: { testid: 'row' },
     onClick: () => store.set({
       sheet: 'recurring',
       editRecurring: {
@@ -69,9 +72,14 @@ export function renderScheduled() {
       }
     })
   }, [
-    el('div', { class: 'chipglyph chipglyph--ghost' }, [icon('plus', 16, { weight: 2.2 })]),
-    el('div', { class: 'row__body' }, [
-      el('div', { class: 'row__title', text: 'New scheduled expense' })
+    el('div', {
+      class: 'flex-none w-9 h-9 rounded-chip flex items-center justify-center font-ui '
+        + 'font-bold text-[13px] normal-nums bg-transparent text-ink3 '
+        + 'shadow-[inset_0_0_0_1px_var(--line)]',
+      dataset: { testid: 'chipglyph', chip: 'ghost' }
+    }, [icon('plus', 16, { weight: 2.2 })]),
+    el('div', { class: ROW_BODY }, [
+      el('div', { class: ROW_TITLE, text: 'New scheduled expense' })
     ])
   ]));
 

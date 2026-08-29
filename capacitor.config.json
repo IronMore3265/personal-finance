@@ -1,7 +1,7 @@
 {
   "appId": "com.paisa.tracker",
   "appName": "Paisa",
-  "webDir": "www",
+  "webDir": "dist",
   "android": {
     "backgroundColor": "#ffffff",
     "allowMixedContent": false

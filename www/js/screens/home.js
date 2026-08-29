@@ -9,10 +9,17 @@ import {
   txnRow, iconChip, accountChip, sparkPoints,
   section, sectionMeta, sectionLink
 } from '../ui/components.js';
+import {
+  ROW, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT, ROW_SUB, ELLIP, TAP
+} from '../ui/styles.js';
 
 
 const HOME_CURRENCY = 'BDT';
 const PRIMARY_ACCOUNT = 'a2';
+
+/* One dot of the card's overflow menu. These were `.acctcard__dots i` - a
+   descendant rule with no ancestor class left to hang off. */
+const dotmark = () => el('i', { class: 'w-[3.5px] h-[3.5px] rounded-full bg-white/55' });
 
 /* The one dark card. Everything else on this screen is a flat row. */
 function primaryCard() {
@@ -25,32 +32,46 @@ function primaryCard() {
   const percent = opening !== 0 ? (change / Math.abs(opening)) * 100 : 0;
 
   const action = (glyph, label, onClick) => el('div', {
-    class: 'cardbtn tappable', onClick
+    class: 'flex items-center gap-2 bg-white/11 rounded-pill py-2.5 pr-[15px] '
+      + 'pl-[11px] font-ui font-semibold text-[12.5px]/[1] text-white normal-nums '
+      + TAP,
+    onClick
   }, [icon(glyph, 16), label]);
 
-  return el('div', { class: 'acctcard' }, [
-    el('div', { class: 'acctcard__top' }, [
-      el('div', { class: 'acctcard__id' }, [
-        el('div', { class: 'acctcard__chip' }, [icon('card', 14)]),
-        el('div', { class: 'acctcard__name', text: account.name + ' · primary' })
+  return el('div', {
+    class: 'bg-[var(--cardBg)] rounded-card pt-[18px] px-[19px] pb-[19px] mt-5'
+  }, [
+    el('div', { class: 'flex items-center justify-between gap-2.5' }, [
+      el('div', { class: 'flex items-center gap-[9px] min-w-0' }, [
+        el('div', {
+          class: 'flex-none w-[26px] h-[26px] rounded-[9px] bg-white/12 flex '
+            + 'items-center justify-center text-white'
+        }, [icon('card', 14)]),
+        el('div', {
+          class: 'font-ui font-medium text-[13px]/[1] text-white/66 normal-nums',
+          text: account.name + ' · primary'
+        })
       ]),
       el('div', {
-        class: 'acctcard__dots tappable',
+        class: 'flex gap-[3px] items-center flex-none p-1.5 -m-1.5 ' + TAP,
         onClick: () => {
           store.set({ reportTab: 'accounts' }, true);
           store.go('reports');
         }
-      }, [el('i'), el('i'), el('i')])
+      }, [dotmark(), dotmark(), dotmark()])
     ]),
-    el('div', { class: 'acctcard__row' }, [
-      el('div', { class: 'acctcard__bal', text: fmt(balance, account.currency) }),
+    el('div', { class: 'flex items-baseline gap-2.5 mt-4 whitespace-nowrap' }, [
       el('div', {
-        class: 'acctcard__delta',
+        class: 'font-ui font-extrabold text-[28px]/[1] text-white tracking-[-.04em] normal-nums',
+        text: fmt(balance, account.currency)
+      }),
+      el('div', {
+        class: 'font-ui font-bold text-[12px]/[1] text-[#c6ee6a] normal-nums',
         text: (change >= 0 ? '+' : MINUS) + Math.abs(percent).toFixed(2) + '% · ' +
           signed(change, account.currency)
       })
     ]),
-    el('div', { class: 'acctcard__actions' }, [
+    el('div', { class: 'flex gap-[9px] mt-[18px]' }, [
       action('pie', 'analytics', () => store.go('reports')),
       // A blank draft aimed at this card's account, not whatever the sheet
       // was last left holding.
@@ -69,20 +90,23 @@ function accountRows() {
     const delta = store.accountDelta(a.id);
     const history = store.accountHistory(a.id);
 
-    return el('div', { class: 'row' }, [
+    return el('div', { class: ROW, dataset: { testid: 'row' } }, [
       accountChip(a),
-      el('div', { class: 'row__body' }, [
-        el('div', { class: 'row__title ellip', text: a.name }),
+      el('div', { class: ROW_BODY }, [
+        el('div', { class: ROW_TITLE + ' ' + ELLIP, text: a.name }),
         el('div', {
-          class: 'row__meta',
+          class: ROW_META,
           text: a.typeLabel + (a.currency === HOME_CURRENCY ? '' : ' · ' + a.currency)
         })
       ]),
       sparkline(sparkPoints(history), delta.up ? 'var(--pos)' : 'var(--danger)'),
-      el('div', { class: 'row__right row__right--wide' }, [
-        el('div', { class: 'row__amt', text: fmt(a.balance, a.currency) }),
+      el('div', { class: ROW_RIGHT + ' min-w-[74px]' }, [
+        el('div', { class: ROW_AMT, text: fmt(a.balance, a.currency) }),
         el('div', {
-          class: 'row__sub' + (delta.up ? ' row__sub--pos' : ' row__sub--neg'),
+          // Bolder and a shade larger than a plain sub-line, which is what the
+          // --pos / --neg modifiers used to add on top of the colour.
+          class: ROW_SUB + ' font-semibold text-[11px] '
+            + (delta.up ? 'text-pos' : 'text-danger'),
           text: (delta.up ? '+' : MINUS) + Math.abs(delta.percent).toFixed(1) + '%'
         })
       ])
@@ -104,16 +128,21 @@ function recurringRows() {
     const meta = dueLabel(due, store.today) + ' · ' + b.freq
       + (b.variable ? ' · amount varies' : '');
 
-    return el('div', { class: 'row' }, [
+    return el('div', { class: ROW, dataset: { testid: 'row' } }, [
       iconChip('bell', store.isOverdue(b) ? 'var(--accentSoft)' : 'var(--soft)'),
-      el('div', { class: 'row__body' }, [
-        el('div', { class: 'row__title ellip', text: b.name }),
-        el('div', { class: 'row__meta', text: meta })
+      el('div', { class: ROW_BODY }, [
+        el('div', { class: ROW_TITLE + ' ' + ELLIP, text: b.name }),
+        el('div', { class: ROW_META, text: meta })
       ]),
-      el('div', { class: 'row__amt row__amt--flush', text: fmt(b.amount, HOME_CURRENCY) }),
+      el('div', {
+        class: ROW_AMT + ' flex-none text-danger',
+        text: fmt(b.amount, HOME_CURRENCY)
+      }),
       // Paying is a single lime tick, not the words "Mark paid".
       el('div', {
-        class: 'roundbtn roundbtn--lime tappable',
+        class: 'flex-none w-[34px] h-[34px] rounded-full bg-accent text-accent-ink '
+          + 'flex items-center justify-center ' + TAP,
+        dataset: { testid: 'roundbtn' },
         onClick: () => (b.variable
           ? store.set(store.resetEntry({
             sheet: 'add',
@@ -135,17 +164,27 @@ function debtSummary() {
   const { owedToMe, iOwe } = store.debtTotals();
   if (!owedToMe && !iOwe) return null;
 
-  const cell = (label, value, cls) => el('div', {
-    class: 'debtsum__cell tappable',
+  const cell = (label, value, tone) => el('div', {
+    class: 'flex-1 min-w-0 ' + TAP,
     onClick: () => store.set({ budgetSeg: 'debts', screen: 'budgets' })
   }, [
-    el('div', { class: 'debtsum__label', text: label }),
-    el('div', { class: 'debtsum__value ' + cls, text: fmt(value, HOME_CURRENCY) })
+    el('div', {
+      class: 'font-ui font-semibold text-[10px]/[1] text-ink3 uppercase '
+        + 'tracking-[.12em] normal-nums',
+      text: label
+    }),
+    el('div', {
+      class: 'font-ui font-extrabold text-[19px]/[1] mt-[7px] tracking-[-.03em] '
+        + 'normal-nums ' + tone,
+      text: fmt(value, HOME_CURRENCY)
+    })
   ]);
 
-  return el('div', { class: 'debtsum' }, [
-    cell('Owed to you', owedToMe, 'debtsum__value--pos'),
-    cell('You owe', iOwe, 'debtsum__value--neg')
+  return el('div', {
+    class: 'flex gap-2.5 py-[14px] border-t border-b border-line mb-1'
+  }, [
+    cell('Owed to you', owedToMe, 'text-pos'),
+    cell('You owe', iOwe, 'text-danger')
   ]);
 }
 
@@ -154,10 +193,23 @@ export function renderHome() {
   const up = totals.net >= 0;
 
   return [
-    el('div', { class: 'balance' }, [
-      el('div', { class: 'balance__label', text: 'Total balance' }),
-      el('div', { class: 'balance__value', text: fmt(store.netWorth(), HOME_CURRENCY) }),
-      el('div', { class: 'balance__delta' + (up ? '' : ' balance__delta--neg') }, [
+    el('div', { class: 'text-center pt-[14px] pb-1' }, [
+      el('div', {
+        class: 'font-ui font-bold text-[10px]/[1] tracking-[.2em] uppercase '
+          + 'text-ink3 normal-nums',
+        text: 'Total balance'
+      }),
+      el('div', {
+        class: 'font-ui font-extrabold text-[44px]/[1] text-ink tracking-[-.045em] '
+          + 'mt-[14px] whitespace-nowrap normal-nums',
+        dataset: { testid: 'balance-value' },
+        text: fmt(store.netWorth(), HOME_CURRENCY)
+      }),
+      el('div', {
+        class: 'flex items-center justify-center gap-1.5 mt-[11px] font-ui '
+          + 'font-bold text-[12.5px]/[1] whitespace-nowrap normal-nums '
+          + (up ? 'text-pos' : 'text-danger')
+      }, [
         icon(up ? 'chevronUp' : 'chevronDown', 13, { weight: 2 }),
         el('div', {
           text: signed(totals.net, HOME_CURRENCY) + ' this month'

@@ -5,33 +5,113 @@
 // glyph chip, title over meta, right-aligned number.
 
 import { el } from '../core/dom.js';
+import {
+  ROW_TAP, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT, ROW_SUB, ELLIP, TAP, MICROLABEL
+} from './styles.js';
 import { fmt, dayName, MINUS } from '../core/format.js';
 import { setTarget } from '../core/motion.js';
 import { store } from '../core/store.js';
 import { icon, hasIcon } from './icons.js';
 import { brandKey, brandChip } from './brands.js';
 
-/** Legend and category marker: a 9px rounded square, never a circle. */
-export const dot = (color) => el('div', { class: 'dot', style: { background: color } });
+/* Recipes used only inside this module. */
+// No colour here on purpose: two utilities setting the same property resolve
+// by their order in the generated stylesheet, not by their order in the class
+// string, so a variant cannot reliably override a base colour. Each variant
+// states its own instead.
+const CHIPGLYPH = 'flex-none w-9 h-9 rounded-chip flex items-center justify-center '
+  + 'font-ui font-bold text-[13px] normal-nums';
+const CHIP = 'flex-none py-2.5 px-[15px] rounded-pill font-ui font-semibold '
+  + 'text-[12px] whitespace-nowrap normal-nums';
+// No pl-7 here, deliberately. `.chip--lead { padding-left: 7px }` sat at
+// app.css:303, ahead of `.chip { padding: 10px 15px }` at :475 - equal
+// specificity, later rule wins - so the 7px never applied to anything. Adding
+// it as a utility would win where the stylesheet lost, and quietly narrow every
+// account and category chip by 8px.
+const CHIP_LEAD = 'inline-flex items-center gap-2';
+const TAB = 'flex-none pb-3 font-ui font-bold text-[11.5px] tracking-[.08em] '
+  + 'uppercase border-b-2 normal-nums';
+const TAG_SMS = 'flex items-center gap-[3px] flex-none font-ui font-bold '
+  + 'text-[8.5px]/[1] tracking-[.08em] text-accent-ink bg-accent rounded-md py-1 px-[5px] normal-nums';
 
-/** A rounded track with a fill that grows from zero on first paint. */
-export function bar(percent, color, thin = false) {
-  const fill = el('div', { class: 'track__fill', style: { background: color } });
+/** Legend and category marker: a 9px rounded square, never a circle. */
+export const dot = (color) =>
+  el('div', { class: 'flex-none w-[9px] h-[9px] rounded-[3px]', style: { background: color } });
+
+/**
+ * A rounded track with a fill that grows from zero on first paint.
+ *
+ * `extra` is how a caller adjusts the track for its context - the goal row
+ * needs it to flex and lose its margins, the debt row needs a different one.
+ * Those used to be descendant rules in the stylesheet (`.goal__foot .track`);
+ * with the styling inline there is no ancestor left to hang them off, so the
+ * context has to be passed in.
+ */
+export function bar(percent, color, thin = false, extra = '') {
+  const fill = el('div', { class: 'trackfill', style: { background: color } });
   setTarget(fill, Math.min(100, Math.max(0, percent)) + '%');
-  return el('div', { class: 'track' + (thin ? ' track--thin' : '') }, [fill]);
+  // A caller that supplies its own margin gets only that: `m-0` cannot beat
+  // `mt-3` in the utility layer the way the old descendant rule beat
+  // `.track--thin`, so the default has to not be emitted at all.
+  const ownMargin = /(^|\s)-?m[trblxye]?-/.test(extra);
+  return el('div', {
+    class: 'rounded-pill overflow-hidden bg-soft '
+      + (thin ? 'h-[5px]' : 'h-1.5')
+      + (ownMargin ? '' : (thin ? ' mt-3 mb-0' : ' mt-4 mb-1'))
+      + (extra ? ' ' + extra : '')
+  }, [fill]);
 }
 
 /**
  * Rounded-square chip carrying either a type initial or a stroke icon. Tinted
  * by what it stands for - never an emoji, per design.md.
  */
-export function glyphChip(glyph, tint) {
-  return el('div', { class: 'chipglyph', style: { background: tint }, text: glyph });
+export function glyphChip(glyph, tint, size = 36) {
+  return el('div', {
+    class: CHIPGLYPH + ' text-ink',
+    dataset: { testid: 'chipglyph', chip: 'glyph' },
+    style: { ...chipBox(size), background: tint },
+    text: glyph
+  });
 }
 
-export function iconChip(name, tint, size = 16) {
-  return el('div', { class: 'chipglyph', style: { background: tint } }, [icon(name, size)]);
+/**
+ * A stroke icon in a chip.
+ *
+ * The chip itself is monochrome - ink box, page-coloured glyph - so it inverts
+ * with the theme on its own: black box and white stroke in light, the reverse
+ * in dark. What the thing *is* shows as a ring in its own colour.
+ *
+ * The ring scales with the chip rather than sitting at a fixed 1.5px. At that
+ * width it was close to invisible in dark mode, where the surrounding surface
+ * is nearly as dark as the chip it was meant to separate - so a category was
+ * only identifiable by its glyph.
+ *
+ * `size` is the box, not the glyph. It used to be the glyph while the box
+ * stayed pinned at 36px in CSS, so `accountChip(a, 18)` drew an 8px mark
+ * floating in a full-size chip.
+ */
+export function iconChip(name, tint, size = 36) {
+  return el('div', {
+    class: CHIPGLYPH + ' bg-ink text-bg',
+    dataset: { testid: 'chipglyph', chip: 'mono' },
+    style: { ...chipBox(size), boxShadow: '0 0 0 ' + ringWidth(size) + 'px ' + tint }
+  }, [icon(name, glyphSize(size), { weight: 1.9 })]);
 }
+
+/** Ring thickness for a chip of `size`: 3px on a row chip, 2px on a pill. */
+const ringWidth = (size) => Math.max(2, Math.round(size * 0.075));
+
+/** Box geometry for a chip of `size`, so the corner stays proportional. */
+function chipBox(size) {
+  return {
+    width: size + 'px',
+    height: size + 'px',
+    borderRadius: Math.round(size * 0.32) + 'px'
+  };
+}
+
+const glyphSize = (size) => Math.round(size * 0.56);
 
 /**
  * The chip for an account row.
@@ -44,7 +124,7 @@ export function iconChip(name, tint, size = 16) {
  */
 export function accountChip(account, size = 36) {
   if (account.icon && hasIcon(account.icon)) {
-    return iconChip(account.icon, account.color || accountTint(account.type), Math.round(size * 0.45));
+    return iconChip(account.icon, account.color || accountTint(account.type), size);
   }
   const key = account.brand || brandKey(account.name);
   if (key) return brandChip(key, size);
@@ -54,31 +134,29 @@ export function accountChip(account, size = 36) {
   // invent values - and a wallet glyph says more than the letter C.
   const byType = TYPE_ICON[account.type];
   if (byType) {
-    return iconChip(byType, account.color || accountTint(account.type), Math.round(size * 0.45));
+    return iconChip(byType, account.color || accountTint(account.type), size);
   }
   return glyphChip(
     account.name.slice(0, 1).toUpperCase(),
-    account.color || accountTint(account.type)
+    account.color || accountTint(account.type),
+    size
   );
 }
 
-const TYPE_ICON = {
+export const TYPE_ICON = {
   cash: 'wallet', bank: 'landmark', mfs: 'smartphone', card: 'credit-card'
 };
 
 /**
- * The chip for a category: its icon on its own colour, softened so the stroke
- * still reads. Falls back to the initial for categories with no icon set.
+ * The chip for a category: monochrome like every other icon chip, ringed in
+ * the category's own colour. Falls back to the initial when no icon is set.
  */
 export function categoryChip(category, size = 36) {
-  if (!category) return glyphChip('?', 'var(--soft)');
+  if (!category) return glyphChip('?', 'var(--soft)', size);
   if (category.icon && hasIcon(category.icon)) {
-    return el('div', {
-      class: 'chipglyph chipglyph--cat',
-      style: { background: category.color, color: 'var(--onCat)' }
-    }, [icon(category.icon, Math.round(size * 0.45))]);
+    return iconChip(category.icon, category.color || 'var(--soft)', size);
   }
-  return glyphChip(category.name.slice(0, 1).toUpperCase(), category.color || 'var(--soft)');
+  return glyphChip(category.name.slice(0, 1).toUpperCase(), category.color || 'var(--soft)', size);
 }
 
 /** Chip tint for an account, by what kind of account it is. */
@@ -104,8 +182,12 @@ export function sparkPoints(values, w = 52, h = 20, pad = 2.5) {
 }
 
 /**
- * One transaction. Income reads in green, expense in ink - lime is never used
- * for data. A foreign-currency row shows its converted value beneath.
+ * One transaction.
+ *
+ * Direction is carried by colour: money in is green, money out is red. That
+ * replaces the earlier rule of green for income and plain ink for expense,
+ * which left the two sides of the ledger looking alike in a long list. Lime is
+ * still never used for data - it marks actions only.
  */
 export function txnRow(t) {
   const category = store.cat(t.cat);
@@ -122,27 +204,32 @@ export function txnRow(t) {
   ].filter(Boolean).join(' · ');
 
   return el('div', {
-    class: 'row tappable',
+    class: ROW_TAP,
+    dataset: { testid: 'row' },
     onClick: () => store.editTxn(t)
   }, [
     categoryChip(category),
-    el('div', { class: 'row__body' }, [
-      el('div', { class: 'row__titlerow' }, [
-        el('div', { class: 'row__title ellip', text: t.note }),
+    el('div', { class: ROW_BODY }, [
+      el('div', { class: 'flex items-center gap-1.5 min-w-0' }, [
+        el('div', { class: ROW_TITLE + ' ' + ELLIP, text: t.note }),
         t.source === 'sms'
-          ? el('div', { class: 'tag-sms' }, [icon('message', 9, { weight: 2.4 }), 'SMS'])
+          ? el('div', { class: TAG_SMS }, [icon('message', 9, { weight: 2.4 }), 'SMS'])
           : null
       ].filter(Boolean)),
-      el('div', { class: 'row__meta ellip', text: meta })
-    ]),
-    el('div', { class: 'row__right' }, [
       el('div', {
-        class: 'row__amt' + (isIncome ? ' row__amt--pos' : ''),
+        class: ROW_META + ' ' + ELLIP,
+        dataset: { testid: 'row-meta' },
+        text: meta
+      })
+    ]),
+    el('div', { class: ROW_RIGHT }, [
+      el('div', {
+        class: ROW_AMT + (isIncome ? ' text-pos' : ' text-danger'),
         text: (isIncome ? '+' : MINUS) + fmt(t.amount, t.currency)
       }),
       isFx
         ? el('div', {
-            class: 'row__sub',
+            class: ROW_SUB,
             text: '= ' + fmt(store.conv(t), account.currency) + ' @ ' + t.rate
           })
         : null
@@ -169,13 +256,16 @@ export function groupByDay(list, today) {
 export function chip(label, active, onClick, lead) {
   if (!lead) {
     return el('div', {
-      class: 'chip tappable' + (active ? ' chip--on' : ''),
+      class: CHIP + ' ' + TAP + (active ? ' bg-ink text-bg' : ' bg-soft text-ink2'),
+      dataset: { testid: 'chip', on: active ? '1' : '0' },
       text: label,
       onClick
     });
   }
   return el('div', {
-    class: 'chip chip--lead tappable' + (active ? ' chip--on' : ''),
+    class: CHIP + ' ' + CHIP_LEAD + ' ' + TAP
+      + (active ? ' bg-ink text-bg' : ' bg-soft text-ink2'),
+    dataset: { testid: 'chip', on: active ? '1' : '0' },
     onClick
   }, [lead, el('span', { text: label })]);
 }
@@ -183,15 +273,28 @@ export function chip(label, active, onClick, lead) {
 /** Underlined tab, as used by Budgets/Goals and the Reports strip. */
 export function tab(label, active, onClick) {
   return el('div', {
-    class: 'tab tappable' + (active ? ' tab--on' : ''),
+    class: TAB + ' ' + TAP
+      + (active ? ' text-ink border-b-ink' : ' text-ink3 border-b-transparent'),
+    dataset: { testid: 'tab', on: active ? '1' : '0' },
     text: label,
     onClick
   });
 }
 
 export function toggle(on, onClick) {
-  return el('div', { class: 'switch' + (on ? ' switch--on' : ''), onClick }, [
-    el('div', { class: 'switch__knob' })
+  return el('div', {
+    class: 'flex-none w-[50px] h-[30px] rounded-pill p-[3px] flex items-center '
+      + 'cursor-pointer ' + (on ? 'bg-accent' : 'bg-soft'),
+    onClick
+  }, [
+    el('div', {
+      // On the lime track the knob is accent-ink, not ink. Lime is the one
+      // colour that does not flip between themes, so a knob painted in --ink
+      // turns near-white on it in dark mode and all but disappears. Off the
+      // lime, --ink is right and inverts with the track as it should.
+      class: 'w-6 h-6 rounded-full transition-transform duration-[180ms] ease-move '
+        + (on ? 'bg-accent-ink translate-x-5' : 'bg-ink translate-x-0')
+    })
   ]);
 }
 
@@ -201,25 +304,35 @@ export function toggle(on, onClick) {
 // optional count or link on the right. It is what replaced the card border.
 
 export function section(label, trailing) {
-  return el('div', { class: 'section' }, [
-    el('div', { class: 'section__label', text: label }),
-    el('div', { class: 'section__fill' }),
+  return el('div', { class: 'flex items-center gap-2.5 mt-[26px] mb-1' }, [
+    el('div', { class: MICROLABEL, text: label }),
+    el('div', { class: 'flex-1 h-px bg-line' }),
     trailing || null
   ].filter(Boolean));
 }
 
 export function sectionMeta(text) {
-  return el('div', { class: 'section__meta', text });
+  return el('div', {
+    class: 'font-ui font-semibold text-[10px]/[1] text-ink3 uppercase '
+      + 'tracking-[.1em] whitespace-nowrap normal-nums',
+    text
+  });
 }
 
 export function sectionLink(text, onClick) {
-  return el('div', { class: 'section__link tappable', onClick }, [
-    el('div', { class: 'section__linktext', text }),
+  return el('div', {
+    class: 'flex items-center gap-[5px] text-ink flex-none ' + TAP,
+    onClick
+  }, [
+    el('div', {
+      class: 'font-ui font-bold text-[10px]/[1] uppercase tracking-[.1em] normal-nums',
+      text
+    }),
     icon('chevronRight', 13, { weight: 2 })
   ]);
 }
 
 /** Standalone label with no rule, used where rows follow immediately. */
 export function fieldLabel(text) {
-  return el('div', { class: 'fieldlabel', text });
+  return el('div', { class: MICROLABEL + ' mt-[22px] mb-2', text });
 }

@@ -73,7 +73,6 @@
   --dur-screen: 600ms;
   --dur-hero: 850ms;
   --dur-sheet: 240ms;
-  --dur-ripple: 280ms;
   --dur-pop: 200ms;
 }
 
@@ -115,16 +114,6 @@
     --dur-screen: 0ms;
     --dur-hero: 0ms;
     --dur-sheet: 0ms;
-    --dur-ripple: 0ms;
     --dur-pop: 0ms;
   }
 }
-
-/*
- * Ink for a glyph sitting on a user-chosen category colour.
- *
- * Every swatch in ui/palette.js is around oklch lightness 0.6, which white
- * clears comfortably in both themes - so this is one value rather than a
- * per-colour contrast calculation.
- */
-:root { --onCat: #ffffff; }

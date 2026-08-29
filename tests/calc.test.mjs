@@ -14,7 +14,6 @@ function type(keys) {
   let s = c.clear();
   for (const k of keys) {
     if (k === 'del') s = c.pressDelete(s.expr, s.buf);
-    else if (k === '=') s = c.pressEquals(s.expr, s.buf);
     else if (c.OPS.includes(k)) s = c.pressOp(s.expr, s.buf, k);
     else s = c.pressDigit(s.expr, s.buf, k);
   }
@@ -73,11 +72,6 @@ test('deleting an operator does not swallow the next digit typed', () => {
   // and evaluate() then read [12, 3] as a truncated expression worth 12.
   assert.deepEqual(type(keys('1 2 + del')), { expr: [], buf: '12' });
   assert.equal(val('1 2 + del 3'), 123);
-});
-
-test('equals folds the expression and lets you keep going', () => {
-  assert.deepEqual(type(keys('2 4 0 × 2 =')), { expr: [], buf: '480' });
-  assert.equal(val('2 4 0 × 2 = + 2 0'), 500);
 });
 
 test('the 9 digit cap the digits-only keypad always had still holds', () => {

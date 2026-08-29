@@ -5,11 +5,33 @@
 // survive a render.
 
 import { el, clear } from './core/dom.js';
-import { bindRipples, pushIn, stagger } from './core/motion.js';
+import { pushIn, stagger } from './core/motion.js';
 import { store } from './core/store.js';
 import { exportCsv } from './core/exporter.js';
 import * as calc from './core/calc.js';
 import { icon } from './ui/icons.js';
+import { TAP, PRESS } from './ui/styles.js';
+import { bindSheetDrag } from './ui/dragsheet.js';
+
+/* Shell recipes. The nav and the header are the only chrome the app draws. */
+const STATUSBAR = 'flex-none h-9 flex items-center justify-between px-6 '
+  + 'font-ui font-bold text-[11.5px] text-ink tracking-[.02em] normal-nums';
+const ICONBTN = 'flex-none w-[38px] h-[38px] rounded-full bg-soft flex '
+  + 'items-center justify-center text-ink';
+const HEADER = 'flex-none flex items-center justify-between gap-2.5 pt-1.5 px-[22px] pb-2.5';
+/*
+ * The bar is 92px rather than 78px and its icons 26px rather than 22px, with
+ * less padding above them so the row sits lower in the taller bar. The three
+ * offsets that clear it - the scroll padding, the FAB and the toast - are
+ * keyed to this height and move with it.
+ */
+const NAV_BAR = 'h-[calc(92px+var(--safe-b))] pt-[14px] pb-[var(--safe-b)] bg-surface '
+  + 'border-t border-line flex items-start';
+const NAV_ITEM = 'flex-1 flex flex-col items-center gap-2';
+const NAV_ICON = 26;
+/* The pill at the top of a sheet: what says it can be pulled down. */
+const GRABBER = 'flex-none w-[38px] h-1 rounded-pill bg-line mx-auto mt-2.5 mb-1 '
+  + '[touch-action:none]';
 
 import { renderHome } from './screens/home.js';
 import { renderActivity } from './screens/activity.js';
@@ -76,6 +98,9 @@ const scrollMemory = {};
 // scroll-position carry the screen body has had all along - without it, every
 // tap inside the add sheet snapped it back to the top.
 let sheetScroll = 0;
+// Whether the keypad was up on the previous pass, so its slide-in animation
+// runs when it opens and not on every key thereafter.
+let lastKeypad = false;
 
 /* ------------------------------------------------------------------ *
  * Chrome
@@ -92,17 +117,19 @@ const isNative = () =>
  * completes the artboard.
  */
 function statusBar() {
-  return el('div', { class: 'statusbar' }, [
+  return el('div', { class: STATUSBAR, dataset: { testid: 'statusbar' } }, [
     el('span', { text: '9:41' }),
-    el('div', { class: 'statusbar__icons' }, [
+    el('div', { class: 'flex gap-1.5 items-center' }, [
       icon('wifi', 15, { weight: 1.8 }),
-      el('div', { class: 'statusbar__batt' }, [el('i')])
+      el('div', {
+        class: 'relative w-5 h-2.5 border-[1.6px] border-ink rounded-[3px]'
+      }, [el('i', { class: 'absolute inset-0.5 right-1.5 bg-ink rounded-[1px]' })])
     ])
   ]);
 }
 
 function iconBtn(name, onClick, size = 17) {
-  return el('div', { class: 'iconbtn tappable', onClick }, [icon(name, size)]);
+  return el('div', { class: ICONBTN + ' ' + TAP, onClick }, [icon(name, size)]);
 }
 
 /** Home shows the wordmark; every other screen shows back / title / action. */
@@ -110,14 +137,23 @@ function header() {
   const screen = store.ui.screen;
 
   if (screen === 'home') {
-    return el('div', { class: 'header' }, [
-      el('div', { class: 'wordmark' }, [
-        el('div', { class: 'wordmark__blob' }),
-        el('div', { class: 'wordmark__text', text: 'Paisa' })
+    return el('div', { class: HEADER }, [
+      // The wordmark carries the only lime on the header: a blob behind the P.
+      el('div', { class: 'relative inline-block' }, [
+        el('div', {
+          class: 'absolute -right-[7px] -top-px w-5 h-5 rounded-full bg-[var(--accentBlob)]'
+        }),
+        el('div', {
+          class: 'relative font-ui font-bold text-[19px]/[1] text-ink '
+            + 'tracking-[-.02em] normal-nums',
+          text: 'Paisa'
+        })
       ]),
-      el('div', { class: 'header__actions' }, [
-        iconBtn('moon', () => store.toggleDark()),
-        iconBtn('gear', () => store.go('settings'))
+      // Only the theme toggle here. Settings is reached from the nav bar's
+      // person tab, which is also what lights up on its sub-screens - two
+      // doors to one room was the redundancy.
+      el('div', { class: 'flex gap-2 flex-none' }, [
+        iconBtn('moon', () => store.toggleDark())
       ])
     ]);
   }
@@ -129,9 +165,17 @@ function header() {
   // rather than all the way home.
   const back = ['categories', 'accounts', 'scheduled'].includes(screen) ? 'settings' : 'home';
 
-  return el('div', { class: 'header' }, [
+  return el('div', { class: HEADER }, [
     iconBtn('arrowLeft', () => store.go(back), 18),
-    el('div', { class: 'header__title ellip', text: title }),
+    el('div', {
+      // Line-height 1.4, not 1. At /[1] the box is exactly 17px tall and the
+      // ellipsis needs overflow:hidden, so the descender of the g in Settings
+      // and Budgets was sliced off by the header's own bottom edge. Titles
+      // without a descender - Paisa, Activity, Accounts - never showed it.
+      class: 'flex-1 text-center font-ui font-bold text-[17px]/[1.4] text-ink '
+        + 'tracking-[-.02em] normal-nums whitespace-nowrap overflow-hidden text-ellipsis',
+      text: title
+    }),
     // "Export this view" in the prototype was a stub; here it runs the real
     // CSV export the app already ships.
     iconBtn('upload', () => exportCsv(store))
@@ -139,14 +183,17 @@ function header() {
 }
 
 function nav() {
-  return el('div', { class: 'nav' }, NAV.map(([id, glyph, isOn]) => {
+  return el('div', { class: NAV_BAR }, NAV.map(([id, glyph, isOn]) => {
     const on = isOn(store.ui.screen);
     return el('div', {
-      class: 'nav__item tappable' + (on ? ' nav__item--on' : ''),
+      class: NAV_ITEM + ' ' + TAP + (on ? ' text-ink' : ' text-ink3'),
       onClick: () => store.go(id)
     }, [
-      icon(glyph, 22),
-      el('div', { class: 'nav__dot' })
+      icon(glyph, NAV_ICON),
+      // Active state is an ink icon over a lime dot - no fill, no pill, no label.
+      el('div', {
+        class: 'w-1.5 h-1.5 rounded-full ' + (on ? 'bg-accent' : 'bg-transparent')
+      })
     ]);
   }));
 }
@@ -154,7 +201,10 @@ function nav() {
 /** Lime FAB, floating clear of the bar rather than notched into it. */
 function fab() {
   return el('div', {
-    class: 'fab tappable',
+    class: 'absolute right-[22px] bottom-[calc(110px+var(--safe-b))] w-14 h-14 '
+      + 'rounded-full bg-accent text-accent-ink flex items-center justify-center '
+      + 'shadow-[var(--sh-fab)] z-[4] ' + PRESS,
+    dataset: { testid: 'fab' },
     // Always a blank draft: the sheet doubles as the editor, so without this
     // the FAB would reopen whatever transaction was last edited.
     onClick: () => store.set(store.resetEntry({ sheet: 'add' }))
@@ -189,16 +239,10 @@ function restoreFocus(snapshot) {
  * any of them is missing the caller falls back to a full sheet render.
  */
 function patchAmount() {
-  const val = document.querySelector('.amount__val');
-  const expr = document.querySelector('.amount__expr');
-  const save = document.querySelector('.savebtn');
+  const val = document.querySelector('[data-testid="amount-val"]');
+  const expr = document.querySelector('[data-testid="amount-expr"]');
+  const save = document.querySelector('[data-testid="savebtn"]');
   if (!val || !expr || !save) return false;
-
-  // Pressing the first operator adds the equals key to the footer, and folding
-  // the last one takes it away. That is a change of structure, not of text, so
-  // it needs a real render - the fast path only moves numbers around.
-  const wantsEquals = store.ui.entryExpr.length > 0;
-  if (wantsEquals !== !!document.querySelector('.equalsbtn')) return false;
 
   const { entryExpr, entryAmount, entryValue } = store.ui;
   const items = store.ui.entryItems;
@@ -210,7 +254,14 @@ function patchAmount() {
 
   const total = store.entryTotal();
   save.textContent = saveButtonLabel(total);
-  save.classList.toggle('savebtn--ready', !!total);
+  // The ready state is utility classes now, not a modifier class, so it has to
+  // be swapped rather than toggled: a `.savebtn--ready` rule in the components
+  // layer would lose to the `bg-soft` utility already on the node.
+  save.classList.toggle('bg-accent', !!total);
+  save.classList.toggle('text-accent-ink', !!total);
+  save.classList.toggle('bg-soft', !total);
+  save.classList.toggle('text-ink3', !total);
+  save.dataset.ready = total ? '1' : '0';
 
   // A line item being edited shows its own running amount in the row.
   if (store.ui.entryFocusItem) {
@@ -231,8 +282,8 @@ function patchAmount() {
  * user has scrolled by hand is left where they put it.
  */
 function revealSelectedChips(scope) {
-  for (const row of scope.querySelectorAll('.chiprow')) {
-    const on = row.querySelector('.chip--on');
+  for (const row of scope.querySelectorAll('[data-testid="chiprow"]')) {
+    const on = row.querySelector('[data-testid="chip"][data-on="1"]');
     if (!on) continue;
     const rowBox = row.getBoundingClientRect();
     const chipBox = on.getBoundingClientRect();
@@ -241,27 +292,74 @@ function revealSelectedChips(scope) {
   }
 }
 
+/**
+ * Carry the sideways scroll of every `.chiprow` across a rebuild.
+ *
+ * The rows are recreated from scratch on each render, so a row the user had
+ * scrolled - the icon picker's group tabs, the Reports range strip - snapped
+ * back to the left on every tap. Matched by position, which is stable because
+ * the rebuild draws the same rows in the same order.
+ */
+function readChipScroll(scope) {
+  return [...scope.querySelectorAll('[data-testid="chiprow"]')].map(n => n.scrollLeft);
+}
+
+function writeChipScroll(scope, saved) {
+  const rows = scope.querySelectorAll('[data-testid="chiprow"]');
+  saved.forEach((left, i) => { if (rows[i] && left) rows[i].scrollLeft = left; });
+}
+
 function renderSheet() {
+  // A different sheet - or none at all - is an entrance. The same sheet being
+  // redrawn after a tap inside it is not, and must not replay the slide-up.
+  const entering = store.ui.sheet !== lastSheet;
+  const keysEntering = store.ui.keypadOpen && !lastKeypad;
+
   if (dom.overlay.firstChild) {
-    const body = dom.overlay.querySelector('.sheet__body');
+    const body = dom.overlay.querySelector('[data-testid="sheet-body"]');
     if (body) sheetScroll = body.scrollTop;
   }
-  if (store.ui.sheet !== lastSheet) sheetScroll = 0;
+  if (entering) sheetScroll = 0;
+  const chipScroll = readChipScroll(dom.overlay);
+
   lastSheet = store.ui.sheet;
+  lastKeypad = !!store.ui.keypadOpen;
 
   clear(dom.overlay);
   if (!store.ui.sheet) return;
 
   dom.overlay.appendChild(el('div', {
-    class: 'scrim',
+    class: 'absolute inset-0 bg-black/50 z-10'
+      + (entering ? ' [animation:fadeIn_var(--dur-micro)_ease]' : ''),
+    dataset: { testid: 'scrim' },
     onClick: () => store.set({ sheet: null })
   }));
 
   const build = SHEETS[store.ui.sheet] || renderAddSheet;
-  dom.overlay.appendChild(build());
+  const sheet = build();
+  // Identity for the tests, set here rather than in six sheet files - and
+  // keyed off which sheet is open, so it stays right when several of them
+  // share a size class.
+  sheet.dataset.testid = 'sheet';
+  sheet.dataset.sheet = store.ui.sheet;
+  if (entering) sheet.classList.add('sheet--enter');
 
-  const body = dom.overlay.querySelector('.sheet__body');
+  // A grabber, and the gesture it advertises. Added here rather than in the
+  // six sheet builders so every sheet gets both without knowing about either.
+  sheet.insertBefore(el('div', { class: GRABBER, dataset: { testid: 'sheet-grab' } }),
+    sheet.firstChild);
+  bindSheetDrag(sheet, () => store.set({ sheet: null }));
+
+  dom.overlay.appendChild(sheet);
+
+  if (keysEntering) {
+    const foot = sheet.querySelector('[data-foot="keys"]');
+    if (foot) foot.classList.add('sheet__foot--enter');
+  }
+
+  const body = dom.overlay.querySelector('[data-testid="sheet-body"]');
   if (body && sheetScroll) body.scrollTop = sheetScroll;
+  if (!entering) writeChipScroll(dom.overlay, chipScroll);
   revealSelectedChips(dom.overlay);
 }
 
@@ -285,6 +383,7 @@ function render(_store, regions) {
 
   if (r.has('body')) {
     if (!changed && dom.scroll) scrollMemory[screen] = dom.scroll.scrollTop;
+    const chipScroll = changed ? [] : readChipScroll(dom.scroll);
 
     clear(dom.scroll);
     const content = SCREENS[screen]();
@@ -296,6 +395,7 @@ function render(_store, regions) {
       dom.scroll.scrollTop = 0;
     } else {
       dom.scroll.scrollTop = scrollMemory[screen] || 0;
+      writeChipScroll(dom.scroll, chipScroll);
     }
     lastScreen = screen;
     revealSelectedChips(dom.scroll);
@@ -306,7 +406,14 @@ function render(_store, regions) {
   if (r.has('toast')) {
     clear(dom.toast);
     if (store.ui.toast) {
-      dom.toast.appendChild(el('div', { class: 'toast', text: store.ui.toast }));
+      dom.toast.appendChild(el('div', {
+        class: 'absolute left-[22px] right-[22px] bottom-[calc(112px+var(--safe-b))] '
+          + 'bg-ink text-bg rounded-box py-[14px] px-4 font-ui font-semibold '
+          + 'text-[12px]/[1.4] text-center z-[15] normal-nums '
+          + '[animation:popIn_var(--dur-micro)_ease]',
+        dataset: { testid: 'toast' },
+        text: store.ui.toast
+      }));
     }
   }
 
@@ -362,7 +469,6 @@ async function boot() {
   } else {
     dom.root.insertBefore(statusBar(), dom.header);
   }
-  bindRipples(dom.root);
 
   await store.init();
   store.subscribe(render);
@@ -376,6 +482,7 @@ async function boot() {
 
   const boot = document.getElementById('boot');
   boot.classList.add('boot--gone');
+  boot.dataset.gone = '1';
   boot.addEventListener('transitionend', () => boot.remove(), { once: true });
 }
 

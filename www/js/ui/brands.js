@@ -49,11 +49,22 @@ export const BRAND_KEYS = Object.keys(BRANDS);
 export function brandChip(key, size = 36) {
   const meta = BRANDS[key];
   const node = document.createElement('div');
-  node.className = 'chipglyph chipglyph--brand';
+  // A brand mark is flat artwork, not a stroke glyph, so the chip carries the
+  // provider's own colour rather than the theme's ink or soft tint. The inset
+  // hairline keeps a dark mark (Mastercard's black) off a dark sheet.
+  node.className = 'flex-none flex items-center justify-center overflow-hidden '
+    + 'bg-none shadow-[inset_0_0_0_1px_rgb(255_255_255/0.10)]';
+  node.dataset.testid = 'chipglyph';
+  node.dataset.chip = 'brand';
   node.style.width = node.style.height = size + 'px';
+  // Proportional, the same 0.32 chipBox() uses, so a mark keeps its corner at
+  // any size. It replaces a `.chip--lead .chipglyph--brand` rule that tightened
+  // the radius for the small chips inside an account pill - a descendant
+  // selector with no ancestor class left to hang off.
+  node.style.borderRadius = Math.round(size * 0.32) + 'px';
 
   const img = document.createElement('img');
-  img.className = 'chipglyph__mark';
+  img.className = 'w-full h-full block object-cover';
   img.src = 'assets/brands/' + key + '.svg';
   img.alt = meta ? meta.label : key;
   // Decorative next to a visible account name; the name carries the meaning.

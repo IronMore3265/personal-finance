@@ -9,16 +9,23 @@ import { fmt } from '../core/format.js';
 import { store } from '../core/store.js';
 import { chip, fieldLabel, accountChip } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
+import { datePicker, dateLabel } from '../ui/datepicker.js';
+import {
+  CHIPROW_FLUSH, TAP, SHEET, SHEET_HEAD, SHEET_BODY, SHEET_FOOT, SHEET_TITLE,
+  SHEET_ICON, SHEET_LEDE, SAVEBTN, DELBTN_WIDE, FIELD, MINILABEL
+} from '../ui/styles.js';
 
 const patch = (p) => store.set({ editDebt: { ...store.ui.editDebt, ...p } });
 
 function directionSeg(d) {
   const seg = (id, label) => el('div', {
-    class: 'seg tappable' + (d.direction === id ? ' seg--on' : ''),
+    class: 'flex-1 text-center py-[11px] px-1 rounded-pill font-ui font-semibold '
+          + 'text-[12.5px] normal-nums ' + TAP
+        + (d.direction === id ? ' bg-ink text-bg' : ' bg-transparent text-ink3'),
     text: label,
     onClick: () => patch({ direction: id })
   });
-  return el('div', { class: 'segpill' }, [
+  return el('div', { class: 'flex bg-soft rounded-pill p-1' }, [
     seg('owed_to_me', 'They owe me'),
     seg('i_owe', 'I owe them')
   ]);
@@ -31,32 +38,38 @@ function settleBlock(d) {
 
   const quick = [500, 1000, 5000].filter(v => v <= outstanding);
 
-  return el('div', { class: 'settle' }, [
-    el('div', { class: 'settle__head' }, [
-      el('div', { class: 'minilabel', text: 'Record a repayment' }),
-      el('div', { class: 'settle__out', text: fmt(outstanding, d.currency) + ' left' })
+  return el('div', { class: 'mt-[22px] pt-[14px] pb-1 border-t border-line' }, [
+    el('div', { class: 'flex items-baseline justify-between mb-2.5' }, [
+      el('div', { class: MINILABEL, text: 'Record a repayment' }),
+      el('div', {
+        class: 'font-ui font-bold text-[13px] text-ink normal-nums',
+        text: fmt(outstanding, d.currency) + ' left'
+      })
     ]),
-    el('div', { class: 'chiprow chiprow--flush' }, [
+    el('div', { class: CHIPROW_FLUSH, dataset: { testid: 'chiprow' } }, [
       ...quick.map(v => chip('+' + v.toLocaleString('en-US'), false,
         () => store.settleDebt(d, v, d.account))),
       chip('Settle in full', false, () => store.settleDebt(d, outstanding, d.account))
     ]),
-    el('div', { class: 'settle__note', text: 'Posts a transaction on ' + (store.acct(d.account) || {}).name })
+    el('div', {
+      class: 'mt-2.5 font-ui font-normal text-[11px] text-ink3 normal-nums',
+      text: 'Posts a transaction on ' + (store.acct(d.account) || {}).name
+    })
   ]);
 }
 
 export function renderDebtSheet() {
   const d = store.ui.editDebt;
-  if (!d) return el('div', { class: 'sheet' });
+  if (!d) return el('div', { class: SHEET });
   const armed = store.ui.confirmDelete;
 
-  const body = el('div', { class: 'sheet__body' }, [
+  const body = el('div', { class: SHEET_BODY, dataset: { testid: 'sheet-body' } }, [
     directionSeg(d),
 
     fieldLabel('Person'),
     el('input', {
       id: 'debt-person',
-      class: 'entity__field',
+      class: FIELD,
       value: d.person,
       placeholder: 'Who?',
       onInput: (e) => { store.ui.editDebt.person = e.target.value; }
@@ -65,7 +78,7 @@ export function renderDebtSheet() {
     fieldLabel('Amount'),
     el('input', {
       id: 'debt-amount',
-      class: 'entity__field entity__field--big',
+      class: FIELD + ' font-bold text-[20px]',
       inputmode: 'decimal',
       value: String(d.principal || ''),
       placeholder: '0',
@@ -73,25 +86,29 @@ export function renderDebtSheet() {
     }),
 
     fieldLabel('Account'),
-    el('div', { class: 'chiprow chiprow--flush' },
+    el('div', { class: CHIPROW_FLUSH, dataset: { testid: 'chiprow' } },
       store.db.accounts.map(a => chip(
         a.name, d.account === a.id, () => patch({ account: a.id }), accountChip(a, 18)
       ))
     ),
 
     fieldLabel('Due date'),
-    el('input', {
-      id: 'debt-due',
-      class: 'daterow__input',
-      type: 'date',
-      value: d.due || '',
-      onChange: (e) => patch({ due: e.target.value })
-    }),
+    // The app's own calendar rather than <input type="date">, which opened the
+    // platform's Material dialog in the OS's colours instead of this app's.
+    el('div', { class: 'flex gap-1.5 flex-wrap', dataset: { testid: 'daterow' } }, [
+      chip(
+        d.due ? dateLabel(d.due) : 'No due date',
+        !!d.due,
+        () => store.set({ debtDateOpen: true }),
+        icon('calendar', 14)
+      ),
+      d.due ? chip('Clear', false, () => patch({ due: '' })) : null
+    ].filter(Boolean)),
 
     fieldLabel('Note'),
     el('input', {
       id: 'debt-note',
-      class: 'entity__field',
+      class: FIELD,
       value: d.note || '',
       placeholder: 'optional',
       onInput: (e) => { store.ui.editDebt.note = e.target.value; }
@@ -100,9 +117,22 @@ export function renderDebtSheet() {
     settleBlock(d)
   ].filter(Boolean));
 
-  const foot = el('div', { class: 'sheet__foot' }, [
+  if (store.ui.debtDateOpen) {
+    return sheetWith(d, body, el('div', {
+      class: SHEET_FOOT,
+      dataset: { testid: 'sheet-foot', foot: 'panel' }
+    }, [
+      panelHead('Due date', () => store.set({ debtDateOpen: false })),
+      // Silent: the picker owns which month it is showing.
+      datePicker(d.due || store.today, store.today,
+        (next) => { store.ui.editDebt.due = next; })
+    ]));
+  }
+
+  const foot = el('div', { class: SHEET_FOOT }, [
     el('div', {
-      class: 'savebtn savebtn--ready tappable',
+      class: SAVEBTN + ' bg-accent text-accent-ink ' + TAP,
+      dataset: { testid: 'savebtn', ready: '1' },
       text: d.isNew ? 'Record debt' : 'Save',
       onClick: async () => {
         const row = { ...store.ui.editDebt };
@@ -117,7 +147,9 @@ export function renderDebtSheet() {
     d.isNew
       ? null
       : el('div', {
-        class: 'delbtn delbtn--wide tappable' + (armed ? ' delbtn--armed' : ''),
+        class: DELBTN_WIDE + ' ' + TAP
+          + (armed ? ' bg-danger text-white' : ' bg-soft text-ink2'),
+        dataset: { testid: 'delbtn', armed: armed ? '1' : '0' },
         text: armed ? 'Tap again to delete' : 'Delete',
         onClick: () => {
           if (!armed) { store.set({ confirmDelete: true }); return; }
@@ -127,18 +159,41 @@ export function renderDebtSheet() {
       })
   ].filter(Boolean));
 
-  return el('div', { class: 'sheet sheet--entity' }, [
-    el('div', { class: 'sheet__head sheet__head--sms' }, [
-      el('div', { class: 'sheet__icon' }, [icon('hand-coins', 18)]),
+  return sheetWith(d, body, foot);
+}
+
+/** The sheet shell, shared by the normal footer and the date panel. */
+function sheetWith(d, body, foot) {
+  return el('div', { class: SHEET + ' max-h-[92%]' }, [
+    el('div', { class: 'flex-none pt-[18px] px-[22px] pb-1 flex items-start gap-3' }, [
+      el('div', { class: SHEET_ICON }, [icon('hand-coins', 18)]),
       el('div', {}, [
-        el('div', { class: 'sheet__title', text: d.isNew ? 'New debt' : d.person || 'Debt' }),
+        el('div', { class: SHEET_TITLE, text: d.isNew ? 'New debt' : d.person || 'Debt' }),
         el('div', {
-          class: 'sheet__lede',
+          class: SHEET_LEDE,
           text: 'Stays out of your category reports - lending is not spending.'
         })
       ])
     ]),
     body,
     foot
+  ]);
+}
+
+/** A Done bar over the date panel, matching the add sheet's. */
+function panelHead(label, onDone) {
+  return el('div', { class: 'flex items-center justify-between pt-0 px-0.5 pb-2.5' }, [
+    el('div', {
+      class: 'font-ui font-semibold text-[10px] tracking-[.12em] uppercase '
+        + 'text-ink3 normal-nums',
+      text: label
+    }),
+    el('div', {
+      class: 'py-[7px] px-[15px] rounded-pill bg-soft text-ink font-ui font-bold '
+        + 'text-[11.5px] tracking-[.04em] normal-nums ' + TAP,
+      dataset: { testid: 'panelhead-done' },
+      text: 'Done',
+      onClick: onDone
+    })
   ]);
 }

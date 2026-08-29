@@ -16,9 +16,9 @@ import { test, expect } from './fixtures.js';
 test.describe('the outbox', () => {
   test('a write completes and queues while signed out', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
+    await app.openFilledSheet();
     await app.keys(['5', '0', '0']);
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
 
     const db = await app.db();
     expect(db.txns.some(t => t.amount === 500)).toBe(true);
@@ -31,10 +31,10 @@ test.describe('the outbox', () => {
 
   test('deleting queues tombstones for the row and its items', async ({ app, page }) => {
     await app.open();
-    await app.openAddSheet();
-    await page.locator('.itemadd').click();
+    await app.openFilledSheet();
+    await page.locator('[data-testid="itemadd"]').click();
     await app.keys(['3', '0', '0']);
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
 
     const id = (await app.db()).txns.find(t => t.id.startsWith('m')).id;
     await page.evaluate(i => window.__paisa.deleteTxn(i), id);
@@ -63,11 +63,11 @@ test.describe('the outbox', () => {
     await page.route('**://*.supabase.co/**', route => route.abort());
     await app.open();
 
-    await app.openAddSheet();
+    await app.openFilledSheet();
     await app.keys(['1', '2', '3']);
-    await page.locator('.savebtn').click();
+    await page.locator('[data-testid="savebtn"]').click();
 
-    await expect(page.locator('.toast')).toContainText('saved');
+    await expect(page.locator('[data-testid="toast"]')).toContainText('saved');
     expect((await app.db()).txns.some(t => t.amount === 123)).toBe(true);
   });
 });
@@ -218,7 +218,7 @@ test.describe('pull', () => {
 
     // And it is actually on screen, not just in storage.
     await app.goto('txns');
-    await expect(page.locator('.row', { hasText: 'From the other phone' }).first())
+    await expect(page.locator('[data-testid="row"]', { hasText: 'From the other phone' }).first())
       .toBeVisible();
   });
 
