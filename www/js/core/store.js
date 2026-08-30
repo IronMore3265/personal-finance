@@ -16,6 +16,15 @@ const SCREEN_ORDER = [
   'categories', 'accounts', 'scheduled'
 ];
 
+/**
+ * Activity's filter chips, in the order the strip draws them.
+ *
+ * That order is also the one a sideways swipe walks, so it lives here beside
+ * SCREEN_ORDER rather than in the screen - both are navigation, and both are
+ * read by the shell as well as by the screen that draws them.
+ */
+export const FILTERS = ['all', 'expense', 'income', 'sms'];
+
 // Reports range strip. `All` is resolved from the oldest transaction on hand.
 const RANGE_DAYS = { '1w': 7, '1m': 30, '3m': 90, '6m': 180, '1y': 365, '2y': 730 };
 
@@ -111,6 +120,7 @@ const KEY_REGIONS = {
   parse: ['sheet'],
 
   filter: ['body'],
+  filterDir: ['body'],
   query: ['body'],
   range: ['body'],
   reportTab: ['body'],
@@ -137,6 +147,7 @@ class Store {
       reportTab: 'overview',
       range: 'All',
       filter: 'all',
+      filterDir: 1,       // which way the ledger pushes when the filter changes
       query: '',
       sheet: null,
 
@@ -506,11 +517,29 @@ class Store {
 
   /* ---------------- navigation ---------------- */
 
-  go(screen) {
+  /**
+   * @param {string} screen
+   * @param {object} [extra] state to land on together with the screen, in one
+   *   pass - a swipe into Activity picks the filter it arrives on, and two
+   *   `set` calls would render the screen twice.
+   */
+  go(screen, extra) {
     if (screen === this.ui.screen) return;
     const from = SCREEN_ORDER.indexOf(this.ui.screen);
     const to = SCREEN_ORDER.indexOf(screen);
-    this.set({ screen, direction: to >= from ? 1 : -1 });
+    this.set({ ...extra, screen, direction: to >= from ? 1 : -1 });
+  }
+
+  /**
+   * Activity's filter chips are tabs within the screen, so crossing one is a
+   * move with a direction rather than a plain state change: the ledger pushes
+   * across the way the whole body does when you cross a tab.
+   */
+  setFilter(filter, dir) {
+    if (filter === this.ui.filter) return;
+    const from = FILTERS.indexOf(this.ui.filter);
+    const to = FILTERS.indexOf(filter);
+    this.set({ filter, filterDir: dir || (to >= from ? 1 : -1) });
   }
 
   say(msg) {

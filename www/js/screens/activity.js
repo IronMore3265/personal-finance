@@ -3,7 +3,7 @@
 
 import { el } from '../core/dom.js';
 import { signed } from '../core/format.js';
-import { store } from '../core/store.js';
+import { store, FILTERS } from '../core/store.js';
 import { icon } from '../ui/icons.js';
 import { chip, txnRow, groupByDay } from '../ui/components.js';
 import { CHIPROW, TAP } from '../ui/styles.js';
@@ -11,12 +11,14 @@ import { CHIPROW, TAP } from '../ui/styles.js';
 
 const HOME_CURRENCY = 'BDT';
 
-const FILTERS = [
-  ['all', 'All'],
-  ['expense', 'Expense'],
-  ['income', 'Income'],
-  ['sms', 'From SMS']
-];
+// The order lives in the store, beside SCREEN_ORDER: it is what a sideways
+// swipe walks, so the shell reads it too. Only the faces are the screen's.
+const FILTER_LABEL = {
+  all: 'All',
+  expense: 'Expense',
+  income: 'Income',
+  sms: 'From SMS'
+};
 
 function searchRow() {
   // Typing re-renders the list. The shell restores focus and caret afterwards
@@ -51,15 +53,10 @@ export function renderActivity() {
   );
   const groups = groupByDay(list, store.today);
 
-  return [
-    searchRow(),
-
-    el('div', { class: CHIPROW },
-      FILTERS.map(([id, label]) =>
-        chip(label, store.ui.filter === id, () => store.set({ filter: id }))
-      )
-    ),
-
+  // Everything below the chips is one region, so the shell can push it across
+  // on a filter change without dragging the search box - and the chip that was
+  // just tapped - along with it. A tab strip stays put above its pages.
+  const ledger = el('div', { dataset: { testid: 'activity-list' } }, [
     el('div', {
       class: 'flex justify-between items-center gap-2 py-3 border-t border-b '
         + 'border-line mb-1.5'
@@ -99,5 +96,17 @@ export function renderActivity() {
         text: 'Nothing matches that filter'
       })
       : null
-  ].filter(Boolean);
+  ].filter(Boolean));
+
+  return [
+    searchRow(),
+
+    el('div', { class: CHIPROW, dataset: { testid: 'chiprow' } },
+      FILTERS.map(id =>
+        chip(FILTER_LABEL[id], store.ui.filter === id, () => store.setFilter(id))
+      )
+    ),
+
+    ledger
+  ];
 }

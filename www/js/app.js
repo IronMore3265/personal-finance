@@ -6,12 +6,13 @@
 
 import { el, clear } from './core/dom.js';
 import { pushIn, stagger } from './core/motion.js';
-import { store } from './core/store.js';
+import { store, FILTERS } from './core/store.js';
 import { exportCsv } from './core/exporter.js';
 import * as calc from './core/calc.js';
 import { icon } from './ui/icons.js';
 import { TAP, PRESS } from './ui/styles.js';
 import { bindSheetDrag } from './ui/dragsheet.js';
+import { bindSwipe } from './core/swipe.js';
 
 /* Shell recipes. The nav and the header are the only chrome the app draws. */
 const STATUSBAR = 'flex-none h-9 flex items-center justify-between px-6 '
@@ -90,8 +91,55 @@ const NAV = [
   ['settings', 'person', (s) => UNDER_SETTINGS.includes(s)]
 ];
 
+/*
+ * What a sideways swipe walks.
+ *
+ * The four tabs in bar order, and - before the swipe leaves a screen at all -
+ * whatever tabs that screen has of its own. Activity's filter chips are its
+ * sub-tabs, so a swipe there steps All -> Expense -> Income -> From SMS and
+ * only then crosses to Budgets. The screens reached from Settings are not on
+ * the list: they sit a level down and have no left/right relation to anything.
+ */
+const SWIPE_TABS = NAV.map(([id]) => id);
+
+const SUB_TABS = {
+  txns: { key: 'filter', order: FILTERS, set: (id, dir) => store.setFilter(id, dir) }
+};
+
+/** @param {number} dir 1 for the next tab (finger left), -1 for the previous. */
+function swipeTarget(dir) {
+  const screen = store.ui.screen;
+
+  const sub = SUB_TABS[screen];
+  if (sub) {
+    const next = sub.order.indexOf(store.ui[sub.key]) + dir;
+    if (next >= 0 && next < sub.order.length) return { sub, id: sub.order[next] };
+  }
+
+  const here = SWIPE_TABS.indexOf(screen);
+  if (here < 0) return null;
+  const screenNext = SWIPE_TABS[here + dir];
+  return screenNext ? { screen: screenNext } : null;
+}
+
+function swipe(dir) {
+  const target = swipeTarget(dir);
+  if (!target) return;
+  if (target.sub) { target.sub.set(target.id, dir); return; }
+
+  // Arriving at a screen by swipe lands on the sub-tab nearest the edge it was
+  // entered from, so the next swipe the same way has somewhere to go rather
+  // than appearing to skip the screen entirely.
+  const sub = SUB_TABS[target.screen];
+  const edge = sub
+    ? { [sub.key]: dir > 0 ? sub.order[0] : sub.order[sub.order.length - 1] }
+    : null;
+  store.go(target.screen, edge);
+}
+
 const dom = {};
 let lastScreen = null;
+let lastFilter = null;
 let lastSheet = null;
 const scrollMemory = {};
 // Sheets are rebuilt like everything else, so their body needs the same
@@ -382,6 +430,11 @@ function render(_store, regions) {
   }
 
   if (r.has('body')) {
+    // Crossing a sub-tab is a move with a direction, like crossing a tab - but
+    // only the region below the chips travels, not the chips themselves.
+    const sub = SUB_TABS[screen];
+    const subChanged = !changed && !!sub && store.ui[sub.key] !== lastFilter;
+
     if (!changed && dom.scroll) scrollMemory[screen] = dom.scroll.scrollTop;
     const chipScroll = changed ? [] : readChipScroll(dom.scroll);
 
@@ -393,11 +446,18 @@ function render(_store, regions) {
       pushIn(dom.scroll, store.ui.direction);
       stagger(dom.scroll);
       dom.scroll.scrollTop = 0;
+    } else if (subChanged) {
+      const page = dom.scroll.querySelector('[data-testid="activity-list"]') || dom.scroll;
+      pushIn(page, store.ui.filterDir);
+      stagger(page);
+      dom.scroll.scrollTop = 0;
+      writeChipScroll(dom.scroll, chipScroll);
     } else {
       dom.scroll.scrollTop = scrollMemory[screen] || 0;
       writeChipScroll(dom.scroll, chipScroll);
     }
     lastScreen = screen;
+    lastFilter = sub ? store.ui[sub.key] : null;
     revealSelectedChips(dom.scroll);
   }
 
@@ -469,6 +529,15 @@ async function boot() {
   } else {
     dom.root.insertBefore(statusBar(), dom.header);
   }
+
+  // The scroll region outlives every render, so the gesture is bound once and
+  // never rebound. It stands down while a sheet is up: the sheet has its own
+  // drag, and the scrim behind it is not part of this node anyway.
+  bindSwipe(dom.scroll, {
+    onSwipe: swipe,
+    canSwipe: (dir) => !!swipeTarget(dir),
+    enabled: () => !store.ui.sheet
+  });
 
   await store.init();
   store.subscribe(render);

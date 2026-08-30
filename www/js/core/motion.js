@@ -12,15 +12,21 @@
 // Camera dollies and device slides from the reel are deliberately absent -
 // section 7.7 marks those as presentation, not app behaviour.
 
-const reduced = () =>
-  window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+/**
+ * Whether the user has asked for less movement.
+ *
+ * Exported because the swipe gesture needs the same answer: with reduced
+ * motion the surface must not track the finger either, only commit.
+ */
+export const reducedMotion = () =>
+  !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
 /**
  * Pattern A - assemble. Children of `host` fade up 12pt with a per-row delay.
  * 40ms matches the measured stagger; capped so long lists do not crawl.
  */
 export function stagger(host, step = 40, max = 10) {
-  if (reduced()) return;
+  if (reducedMotion()) return;
   host.classList.add('stagger');
   Array.from(host.children).forEach((child, i) => {
     child.style.animationDelay = Math.min(i, max) * step + 'ms';
@@ -32,7 +38,7 @@ export function stagger(host, step = 40, max = 10) {
  * of travel changes with which way you moved through the tab order.
  */
 export function pushIn(host, direction) {
-  if (reduced()) return;
+  if (reducedMotion()) return;
   host.classList.remove('screen--in-right', 'screen--in-left');
   void host.offsetWidth; // restart the animation
   host.classList.add(direction < 0 ? 'screen--in-left' : 'screen--in-right');

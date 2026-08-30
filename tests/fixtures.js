@@ -67,6 +67,27 @@ export const test = base.extend({
       },
 
       /**
+       * Drag the screen body sideways.
+       *
+       * `dir` is the direction of travel through the tabs, not of the finger:
+       * 1 moves the finger left to reach the next tab, -1 right for the
+       * previous one. Stepped rather than jumped so the gesture passes the
+       * axis test the way a real finger does.
+       */
+      async swipe(dir) {
+        const box = await page.locator('#scroll').boundingBox();
+        // Below the search box and the chip row, which own their own gestures.
+        const y = box.y + Math.min(box.height - 20, 260);
+        const x = box.x + box.width / 2;
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        for (let step = 1; step <= 8; step++) {
+          await page.mouse.move(x - dir * 20 * step, y);
+        }
+        await page.mouse.up();
+      },
+
+      /**
        * Open the add sheet on a draft that is ready to save.
        *
        * Nothing below the account renders until one is chosen, and neither an

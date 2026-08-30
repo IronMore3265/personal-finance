@@ -814,6 +814,147 @@ test.describe('pulling a sheet down', () => {
   });
 });
 
+/* ---------------- swiping between tabs ---------------- */
+
+test.describe('swipe navigation', () => {
+  const screen = (page) => page.evaluate(() => window.__paisa.ui.screen);
+  const filter = (page) => page.evaluate(() => window.__paisa.ui.filter);
+
+  test('a swipe left moves to the next tab and right moves back', async ({ app, page }) => {
+    await app.open();
+    expect(await screen(page)).toBe('home');
+
+    await app.swipe(1);
+    expect(await screen(page)).toBe('txns');
+
+    await app.swipe(-1);
+    expect(await screen(page)).toBe('home');
+  });
+
+  test('there is nothing either side of the first and last tabs', async ({ app, page }) => {
+    await app.open();
+    await app.swipe(-1);
+    expect(await screen(page)).toBe('home');
+
+    await app.goto('settings');
+    await app.swipe(1);
+    expect(await screen(page)).toBe('settings');
+  });
+
+  test('a vertical drag scrolls the list rather than changing tab', async ({ app, page }) => {
+    await app.open();
+    const box = await page.locator('#scroll').boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + 260;
+
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) await page.mouse.move(x, y - i * 20);
+    await page.mouse.up();
+
+    expect(await screen(page)).toBe('home');
+  });
+
+  test('a swipe that started on a row does not also open that row', async ({ app, page }) => {
+    await app.open();
+    await app.goto('txns');
+    await app.swipe(1);
+
+    expect(await filter(page)).toBe('expense');
+    await expect(page.locator('[data-testid="sheet"]')).toHaveCount(0);
+  });
+
+  test('a sheet owns the gesture while it is up', async ({ app, page }) => {
+    await app.open();
+    await app.openAddSheet();
+
+    // The drag lands on the scrim, which dismisses the sheet the way a tap
+    // does. What must not happen is the tab moving underneath it as well.
+    await app.swipe(1);
+
+    expect(await screen(page)).toBe('home');
+  });
+});
+
+/* ---------------- Activity's filter chips as sub-tabs ---------------- */
+
+test.describe('activity filters', () => {
+  const filter = (page) => page.evaluate(() => window.__paisa.ui.filter);
+  const screen = (page) => page.evaluate(() => window.__paisa.ui.screen);
+
+  test('a swipe walks the chips before it leaves the screen', async ({ app, page }) => {
+    await app.open();
+    await app.goto('txns');
+    expect(await filter(page)).toBe('all');
+
+    for (const expected of ['expense', 'income', 'sms']) {
+      await app.swipe(1);
+      expect(await filter(page)).toBe(expected);
+      expect(await screen(page)).toBe('txns');
+      await expect(page.locator('[data-testid="chip"][data-on="1"]').first())
+        .toHaveAttribute('data-on', '1');
+    }
+
+    // Past the last chip the same gesture crosses to the next tab.
+    await app.swipe(1);
+    expect(await screen(page)).toBe('budgets');
+  });
+
+  test('the swiped chip is the one the ledger is filtered by', async ({ app, page }) => {
+    await app.open();
+    await app.goto('txns');
+    await app.swipe(1);
+
+    await expect(page.locator('[data-testid="chiprow"] [data-testid="chip"][data-on="1"]'))
+      .toHaveText('Expense');
+    const rows = await page.locator('[data-testid="activity-list"] [data-testid="row"]').count();
+    const expenses = await page.evaluate(
+      () => window.__paisa.db.txns.filter(t => t.type === 'expense').length
+    );
+    expect(rows).toBe(expenses);
+  });
+
+  test('swiping into Activity lands on the chip nearest the edge it came from', async ({ app, page }) => {
+    await app.open();
+
+    // Forward from Home: the first chip, so the next swipe has three to walk.
+    await app.swipe(1);
+    expect(await screen(page)).toBe('txns');
+    expect(await filter(page)).toBe('all');
+
+    await app.goto('budgets');
+    // Backward from Budgets: the last chip, for the same reason.
+    await app.swipe(-1);
+    expect(await screen(page)).toBe('txns');
+    expect(await filter(page)).toBe('sms');
+  });
+
+  test('tapping a chip moves the ledger in the direction the chips run', async ({ app, page }) => {
+    await app.open();
+    await app.goto('txns');
+
+    await page.locator('[data-testid="chiprow"] [data-testid="chip"]', { hasText: 'Income' }).click();
+    expect(await filter(page)).toBe('income');
+    expect(await page.evaluate(() => window.__paisa.ui.filterDir)).toBe(1);
+
+    await page.locator('[data-testid="chiprow"] [data-testid="chip"]', { hasText: 'Expense' }).click();
+    expect(await filter(page)).toBe('expense');
+    expect(await page.evaluate(() => window.__paisa.ui.filterDir)).toBe(-1);
+  });
+
+  test('the search box and the chips stay put while the ledger crosses', async ({ app, page }) => {
+    await app.open();
+    await app.goto('txns');
+    const before = await page.locator('#search-input').boundingBox();
+
+    await app.swipe(1);
+
+    const after = await page.locator('#search-input').boundingBox();
+    expect(after.y).toBeCloseTo(before.y, 0);
+    await expect(page.locator('[data-testid="activity-list"]')).toBeVisible();
+  });
+});
+
 /** A pristine seeded database, read from a throwaway app load. */
 async function freshDb(page) {
   await page.goto('/');

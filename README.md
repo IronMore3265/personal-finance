@@ -70,6 +70,7 @@ www/
       sms.js          SMS rule engine
       format.js       currency, dates, percentages
       motion.js       ripple, stagger, push, bar growth
+      swipe.js        sideways gesture: tabs, and Activity's filter chips
       exporter.js     CSV export and database backup
       dom.js          element builder
     data/
@@ -91,6 +92,17 @@ scripts/
   check.mjs           walks the module graph; catches a bad import path
 tests/                see tests/README.md
 ```
+
+**Navigation.** Four tabs in the bar, and a sideways swipe on the screen body
+that walks the same order. A screen with tabs of its own is walked first:
+Activity's filter chips are its sub-tabs, so a swipe there steps All → Expense
+→ Income → From SMS and only then crosses to Budgets, and arriving by swipe
+lands on the chip nearest the edge it came in from so the next swipe the same
+way never appears to skip the screen. The gesture stands down where something
+else already owns sideways — inside a chip row that actually overflows, inside
+a text field, and while a sheet is up — and vertical wins ties, because
+scrolling the list is the commoner intent. `core/swipe.js` is bound once at
+boot on the scroll region, which outlives every render.
 
 **Storage.** Everything goes through `repo`. On device that is
 `@capacitor-community/sqlite` against the schema in `data/schema.js`; in a
@@ -149,8 +161,8 @@ type-grouped chips rather than one long strip · give categories and accounts
 their own icon and colour · track money lent and owed · run subscriptions that
 post themselves, or wait for a tap, or ask for the amount · mark one due with
 the lime tick · contribute to a goal · paste an SMS and run the rule table ·
-filter and search activity · export CSV · back up the database · flip
-light/dark.
+filter and search activity · swipe sideways between tabs and between the
+activity filters · export CSV · back up the database · flip light/dark.
 
 ## Design fidelity
 
