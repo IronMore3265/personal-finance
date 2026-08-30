@@ -20,16 +20,42 @@
 /** A list row: chip, body, right-aligned number, hairline underneath. */
 export const ROW = 'flex items-center gap-3 py-[13px] border-b border-line';
 
-/** ROW plus the press affordance, for rows that open something. */
-export const ROW_TAP = ROW + ' relative overflow-hidden cursor-pointer '
+/*
+ * ROW plus the press affordance, for rows that open something.
+ *
+ * No `overflow-hidden` here, unlike TAP below. The app draws no ripple - the
+ * press is a scale alone (core/motion.js) - so the clip had nothing to contain
+ * and instead sliced the left of the first child: a category chip wears its
+ * colour as a 3px outset ring (iconChip), which sits outside the row's box and
+ * was cut flat against the row's left edge on every transaction.
+ */
+export const ROW_TAP = ROW + ' relative cursor-pointer '
   + 'transition-transform duration-[180ms] ease-move active:scale-[.985]';
 
 export const ROW_BODY = 'flex-1 min-w-0';
 export const ROW_TITLE = 'font-ui font-semibold text-[14.5px]/[1.2] text-ink min-w-0 normal-nums';
 export const ROW_META = 'font-ui font-medium text-[11px]/[1] text-ink3 mt-1.5 tracking-[.01em] normal-nums';
 export const ROW_RIGHT = 'text-right flex-none';
-export const ROW_AMT = 'font-ui font-bold text-[14.5px]/[1] whitespace-nowrap tracking-[-.01em] normal-nums';
-export const ROW_SUB = 'font-ui font-medium text-[10.5px]/[1] mt-1.5 whitespace-nowrap normal-nums';
+/*
+ * The number recipes come in two forms, and the bare one is not optional
+ * sugar - it is the only way to recolour them.
+ *
+ * Two utilities for one property resolve by their order in the generated
+ * stylesheet, and Tailwind emits colour utilities alphabetically:
+ *
+ *     .text-danger  .text-ink  .text-ink2  .text-ink3  .text-pos
+ *
+ * So `ROW_AMT + ' text-danger'` loses to the `text-ink` already inside it and
+ * renders grey, while `ROW_AMT + ' text-pos'` wins and renders green - which
+ * is how Home's account rows ended up drawing every gain in green and every
+ * loss in the same grey as the meta line beside it. A caller that sets its own
+ * colour must start from the bare recipe so there is nothing to lose to.
+ */
+export const ROW_AMT_BARE = 'font-ui font-bold text-[14.5px]/[1] whitespace-nowrap tracking-[-.01em] normal-nums';
+export const ROW_SUB_BARE = 'font-ui font-medium text-[10.5px]/[1] mt-1.5 whitespace-nowrap normal-nums';
+
+export const ROW_AMT = ROW_AMT_BARE + ' text-ink';
+export const ROW_SUB = ROW_SUB_BARE + ' text-ink3';
 
 /** Truncate to one line with an ellipsis. */
 export const ELLIP = 'whitespace-nowrap overflow-hidden text-ellipsis';
@@ -60,7 +86,7 @@ export const MICROLABEL = 'font-ui font-bold text-[10px]/[1] tracking-[.16em] up
 /* The sheet shell. Height is the caller's business - each sheet caps its own. */
 export const SHEET = 'absolute left-0 right-0 bottom-0 flex flex-col bg-surface '
   + 'rounded-t-sheet shadow-[var(--sh-sheet)] z-[11]';
-export const SHEET_HEAD = 'flex-none pt-[14px] px-[18px] pb-0';
+export const SHEET_HEAD = 'flex-none pt-[14px] px-[22px] pb-0';
 /*
  * `min-h-0` is the whole scroll fix. A flex item defaults to `min-height: auto`
  * and refuses to shrink below its content, so the body never got shorter than
@@ -69,8 +95,8 @@ export const SHEET_HEAD = 'flex-none pt-[14px] px-[18px] pb-0';
  * of the screen instead of scrolling.
  */
 export const SHEET_BODY = 'flex-1 min-h-0 overflow-y-auto overscroll-contain '
-  + 'px-[18px] pt-0 pb-2.5';
-export const SHEET_FOOT = 'flex-none pt-3 px-[18px] pb-[calc(20px+var(--safe-b))]';
+  + 'px-[22px] pt-0 pb-2.5';
+export const SHEET_FOOT = 'flex-none pt-3 px-[22px] pb-[calc(20px+var(--safe-b))]';
 export const SHEET_TITLE = 'font-ui font-extrabold text-[22px]/[1.05] text-ink '
   + 'tracking-[-.03em] normal-nums';
 export const SHEET_LEDE = 'font-ui font-normal text-[12px]/[1.5] text-ink2 mt-2 normal-nums';

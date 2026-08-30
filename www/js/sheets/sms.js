@@ -133,6 +133,11 @@ export function renderSmsSheet() {
         + 'font-ui font-normal text-[12px]/[1.6] text-ink outline-none normal-nums '
         + 'placeholder:text-ink3',
       placeholder: 'Paste message text here',
+      // Stated here rather than written onto the node afterwards: the sheet is
+      // patched in place, so a value poked into the tree this pass built would
+      // land on a node that never reaches the screen, and tapping a sample
+      // would leave the box showing whatever was in it before.
+      value: store.ui.smsText,
       // Hand-edited text is no longer attributable to the sender of the sample.
       onInput: (e) => store.set({ smsText: e.target.value, smsSender: null }, true)
     }),
@@ -169,9 +174,6 @@ export function renderSmsSheet() {
         ])
       : null
   ].filter(Boolean));
-
-  // textarea has no value attribute; set the property directly.
-  body.querySelector('#sms-input').value = store.ui.smsText;
 
   return el('div', { class: SHEET + ' max-h-[92%]' }, [
     el('div', { class: 'flex-none pt-[18px] px-[18px] pb-1 flex items-start gap-3' }, [

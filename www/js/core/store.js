@@ -4,7 +4,8 @@
 // the store, so conversion and sign rules live in exactly one place.
 //
 // A change announces which parts of the shell it can affect, so the shell can
-// rebuild only those. See KEY_REGIONS below.
+// leave the rest alone; inside a region it patches rather than rebuilds. See
+// KEY_REGIONS below, and core/dom.js.
 
 import { repo } from '../data/repo.js';
 import { sync } from '../data/sync.js';
@@ -75,7 +76,10 @@ const ALL = ['header', 'body', 'sheet', 'toast', 'nav'];
 const KEY_REGIONS = {
   screen: ALL,
   direction: ALL,
-  dark: ALL,
+  // The theme is a data attribute on <html> and a table of custom properties;
+  // every colour in the app already reads through those. The only thing in the
+  // tree that depends on it is the switch in Settings that reports its state.
+  dark: ['body'],
 
   toast: ['toast'],
   sheet: ['sheet'],
@@ -125,6 +129,7 @@ const KEY_REGIONS = {
   filterDir: ['body'],
   query: ['body'],
   range: ['body'],
+  includeDebt: ['body'],
   reportTab: ['body'],
   budgetSeg: ['header', 'body']
 };
@@ -195,6 +200,7 @@ class Store {
       smsReturn: null,       // sheet to go back to; set = fill a draft, not save
       parse: null,
       smsLive: false,
+      includeDebt: false,   // net lent and owed money into the Home headline
       toast: null
     };
     this.db = {
@@ -217,6 +223,7 @@ class Store {
     if (stored.dark !== undefined) this.ui.dark = stored.dark === 'true';
     else this.ui.dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     if (stored.smsLive !== undefined) this.ui.smsLive = stored.smsLive === 'true';
+    if (stored.includeDebt !== undefined) this.ui.includeDebt = stored.includeDebt === 'true';
     this.ui.entryDate = this.today;
     this.applyTheme();
     await this.catchUpRecurring();
@@ -355,6 +362,16 @@ class Store {
 
   netWorth() { return this.worth().net; }
 
+  /**
+   * The Home headline. Lent and owed money is netted in only when asked for.
+   *
+   * Deliberately outside `worth()`, whose result is memoised until the ledger
+   * moves - a branch in there would keep serving the pre-toggle number.
+   */
+  homeBalance() {
+    return this.netWorth() + (this.ui.includeDebt ? this.debtTotals().net : 0);
+  }
+
   /** Sum of absolute balances - the denominator for "share of total". */
   grossWorth() { return this.worth().gross; }
 
@@ -422,7 +439,9 @@ class Store {
     const change = now - then;
     const base = Math.abs(then);
     const percent = base > 0 ? (change / base) * 100 : (change !== 0 ? 100 : 0);
-    return { up: change >= 0, change, percent };
+    // `up` still answers "not a loss", which is what the arrow glyphs want.
+    // `flat` is the third case: nothing moved, so nothing should be coloured.
+    return { up: change >= 0, flat: change === 0, change, percent };
   }
 
   /* ---------------- reports ---------------- */
@@ -1029,12 +1048,21 @@ class Store {
     this.ui.dark = !this.ui.dark;
     this.applyTheme();
     await repo.setSetting('dark', this.ui.dark);
-    this.emit(ALL);
+    // Only the switch itself. Repainting the app is CSS's job, and rebuilding
+    // the shell for it threw away scroll position and reset the row that had
+    // just been tapped.
+    this.emit(['body']);
   }
 
   async toggleSmsLive() {
     this.ui.smsLive = !this.ui.smsLive;
     await repo.setSetting('smsLive', this.ui.smsLive);
+    this.emit(['body']);
+  }
+
+  async toggleIncludeDebt() {
+    this.ui.includeDebt = !this.ui.includeDebt;
+    await repo.setSetting('includeDebt', this.ui.includeDebt);
     this.emit(['body']);
   }
 

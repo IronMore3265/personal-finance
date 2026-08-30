@@ -15,6 +15,9 @@ import { test, expect } from './fixtures.js';
 /** Every state worth looking at, as a name and the taps that reach it. */
 const STATES = [
   ['home', async () => {}],
+  ['home-debt', async ({ page }) => {
+    await page.locator('[data-testid="chip"]', { hasText: 'Include debt' }).click();
+  }],
   ['activity', async ({ app }) => app.goto('txns')],
   ['budgets', async ({ app }) => app.goto('budgets')],
   ['goals', async ({ app, page }) => {
@@ -49,6 +52,20 @@ const STATES = [
   ['add-calendar', async ({ app, page }) => {
     await app.openFilledSheet();
     await page.locator('[data-testid="daterow"] [data-testid="chip"]').last().click();
+  }],
+  // The two coarser panes. They are the same card at a different grain, and
+  // nothing else in the app draws a twelve-cell grid, so they are worth a
+  // capture of their own.
+  ['add-calendar-months', async ({ app, page }) => {
+    await app.openFilledSheet();
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]').last().click();
+    await page.locator('[data-testid="cal-month"]').click();
+  }],
+  ['add-calendar-years', async ({ app, page }) => {
+    await app.openFilledSheet();
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]').last().click();
+    await page.locator('[data-testid="cal-month"]').click();
+    await page.locator('[data-testid="cal-month"]').click();
   }],
   ['add-items', async ({ app, page }) => {
     await app.openFilledSheet();

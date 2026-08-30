@@ -258,11 +258,11 @@ function accountsTab() {
       bar(a.share, a.homeValue < 0 ? 'var(--danger)' : 'var(--accent)', true)
     ]),
     el('div', { class: ROW_RIGHT }, [
-      el('div', { class: ROW_AMT + ' text-ink', text: fmt(a.balance, a.currency) }),
+      el('div', { class: ROW_AMT, text: fmt(a.balance, a.currency) }),
       a.currency === HOME_CURRENCY
         ? null
-        : el('div', { class: ROW_SUB + ' text-ink3', text: '≈ ' + fmt(a.homeValue, HOME_CURRENCY) }),
-      el('div', { class: ROW_SUB + ' text-ink3', text: Math.round(a.share) + '% of total' })
+        : el('div', { class: ROW_SUB, text: '≈ ' + fmt(a.homeValue, HOME_CURRENCY) }),
+      el('div', { class: ROW_SUB, text: Math.round(a.share) + '% of total' })
     ].filter(Boolean))
   ]));
 }
@@ -278,7 +278,7 @@ function monthsTab() {
 
   const columns = data.map(d => {
     const inBar = el('div', { class: TREND_BAR + ' bg-accent' });
-    const outBar = el('div', { class: TREND_BAR + ' bg-danger' });
+    const outBar = el('div', { class: TREND_BAR + ' bg-ink2' });
     setTarget(inBar, Math.max(5, (d.income / max) * 100) + '%');
     setTarget(outBar, Math.max(5, (d.expense / max) * 100) + '%');
 
@@ -300,7 +300,7 @@ function monthsTab() {
       dot('var(--accent)'), el('div', { class: LEGEND_NAME_ROW, text: 'Income' })
     ]),
     el('div', { class: LEGEND_ITEM }, [
-      dot('var(--danger)'), el('div', { class: LEGEND_NAME_ROW, text: 'Expense' })
+      dot('var(--ink2)'), el('div', { class: LEGEND_NAME_ROW, text: 'Expense' })
     ])
   ]);
 
@@ -315,7 +315,7 @@ function monthsTab() {
         text: '+' + fmt(d.income, HOME_CURRENCY)
       }),
       el('div', {
-        class: 'font-ui font-semibold text-[12.5px]/[1] text-danger normal-nums',
+        class: 'font-ui font-semibold text-[12.5px]/[1] text-ink2 normal-nums',
         text: MINUS + fmt(d.expense, HOME_CURRENCY)
       })
     ])

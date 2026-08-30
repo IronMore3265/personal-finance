@@ -14,13 +14,17 @@ import { icon } from '../ui/icons.js';
 import { bar, section, sectionMeta } from '../ui/components.js';
 
 import {
-  ROW_TAP, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT, ROW_SUB, ELLIP, TAP
+  ROW_TAP, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT, ROW_AMT_BARE, ROW_SUB,
+  ELLIP, TAP
 } from '../ui/styles.js';
 
 /* Used by both cells of the totals header. */
 const DEBTHEAD_LABEL = 'font-ui font-semibold text-[10px]/[1] text-ink3 uppercase '
   + 'tracking-[.12em] normal-nums';
-const DEBTHEAD_VALUE = 'font-ui font-extrabold text-[26px]/[1] text-ink mt-[9px] '
+// No colour here: the two cells carry opposite tones, and a `text-pos` on the
+// call site cannot reliably beat a `text-ink` baked into the recipe - two
+// utilities for one property resolve by stylesheet order, not class order.
+const DEBTHEAD_VALUE = 'font-ui font-extrabold text-[26px]/[1] mt-[9px] '
   + 'tracking-[-.04em] normal-nums';
 
 function row(d) {
@@ -44,14 +48,19 @@ function row(d) {
       el('div', {
         class: 'flex-none w-9 h-9 rounded-chip flex items-center justify-center font-ui font-bold text-[13px] text-ink normal-nums',
         dataset: { testid: 'chipglyph' },
-        style: { background: mine ? 'var(--accentSoft)' : 'var(--dangerSoft)' }
+        style: { background: mine ? 'var(--posSoft)' : 'var(--dangerSoft)' }
       }, [icon(mine ? 'arrow-down-left' : 'arrow-up-right', 16)]),
       el('div', { class: ROW_BODY }, [
         el('div', { class: ROW_TITLE + ' ' + ELLIP, text: d.person }),
         el('div', { class: ROW_META + ' ' + ELLIP, text: meta || 'no due date' })
       ]),
       el('div', { class: ROW_RIGHT }, [
-        el('div', { class: ROW_AMT + ' text-ink', text: fmt(outstanding, d.currency) }),
+        // Green for money owed to you, red for money you owe - the same reading
+        // Home's strip gives, so the two screens agree at a glance.
+        el('div', {
+          class: ROW_AMT_BARE + (mine ? ' text-pos' : ' text-danger'),
+          text: fmt(outstanding, d.currency)
+        }),
         paid > 0
           ? el('div', { class: ROW_SUB + ' text-ink3', text: 'of ' + fmt(d.principal, d.currency) })
           : null
@@ -95,7 +104,9 @@ export function renderDebts() {
       el('div', { class: 'flex-1 min-w-0' }, [
         el('div', { class: DEBTHEAD_LABEL, text: 'Owed to you' }),
         el('div', {
-          class: DEBTHEAD_VALUE,
+          // Nothing lent is not a gain, so zero drops the green. Same on the
+          // other side, and on Home's copy of this pair.
+          class: DEBTHEAD_VALUE + (totals.owedToMe ? ' text-pos' : ' text-ink'),
           dataset: { testid: 'debthead-value' },
           text: fmt(totals.owedToMe, 'BDT')
         })
@@ -103,7 +114,7 @@ export function renderDebts() {
       el('div', { class: 'flex-1 min-w-0 text-right' }, [
         el('div', { class: DEBTHEAD_LABEL, text: 'You owe' }),
         el('div', {
-          class: DEBTHEAD_VALUE,
+          class: DEBTHEAD_VALUE + (totals.iOwe ? ' text-danger' : ' text-ink'),
           dataset: { testid: 'debthead-value' },
           text: fmt(totals.iOwe, 'BDT')
         })

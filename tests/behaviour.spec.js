@@ -13,6 +13,24 @@ test.describe('boot', () => {
 
 /* ---------------- Phase 2: the sheet scrolls ---------------- */
 
+test.describe('the header', () => {
+  test('every screen is titled, Home included', async ({ app, page }) => {
+    await app.open();
+    await expect(page.locator('#header')).toContainText('Dashboard');
+    // No arrow on Home - there is nowhere to go back to - but the row keeps
+    // its height, so moving between screens does not shunt the content.
+    const heights = {};
+    heights.home = await page.locator('#header').boundingBox();
+    await app.goto('txns');
+    await expect(page.locator('#header')).toContainText('Activity');
+    heights.txns = await page.locator('#header').boundingBox();
+    expect(heights.home.height).toBe(heights.txns.height);
+
+    await app.goto('home');
+    await expect(page.locator('#header')).toContainText('Dashboard');
+  });
+});
+
 test.describe('add sheet scrolling', () => {
   test('the body scrolls and the save button stays on screen', async ({ app, page }) => {
     await app.open();
@@ -88,13 +106,16 @@ test.describe('rendering', () => {
     }
   });
 
-  test('typing in the activity search does not rebuild the whole ledger', async ({ app, page }) => {
+  test('typing in the activity search patches the ledger rather than rebuilding it', async ({ app, page }) => {
     await app.open();
     await app.goto('txns');
     await expect(page.locator('[data-testid="row"]')).not.toHaveCount(0);
 
+    // Stamp everything on the screen. Whatever survives the keystroke still
+    // carries its mark; anything torn down and rebuilt comes back without one.
     await page.evaluate(() => {
       window.__adds = 0;
+      document.querySelectorAll('#scroll, #scroll *').forEach(n => { n.__stamp = 1; });
       new MutationObserver(rs => rs.forEach(r => { window.__adds += r.addedNodes.length; }))
         .observe(document.getElementById('scroll'), { childList: true });
     });
@@ -102,9 +123,124 @@ test.describe('rendering', () => {
     await page.locator('#search-input').fill('coffee');
     await expect(page.locator('[data-testid="row"]')).toHaveCount(1);
 
-    // The body is still rebuilt (the list genuinely changes), but the header,
-    // nav and sheet regions must be left alone.
-    expect(await page.evaluate(() => window.__adds)).toBeGreaterThan(0);
+    const after = await page.evaluate(() => ({
+      input: !!document.querySelector('#search-input').__stamp,
+      row: !!document.querySelector('[data-testid="row"]').__stamp,
+      adds: window.__adds
+    }));
+
+    // The field being typed into is the same node it was, which is why the
+    // caret and the keyboard survive without having to be put back. So is the
+    // row that outlived the filter: the pass writes the differences into what
+    // is already there. Narrowing a list only removes, so nothing is appended.
+    expect(after.input, 'the search field was replaced').toBe(true);
+    expect(after.row, 'a surviving row was rebuilt').toBe(true);
+    expect(after.adds, 'nodes were appended to a list that only shrank').toBe(0);
+  });
+
+  test('a re-render leaves the scroll position and the caret where they were', async ({ app, page }) => {
+    await app.open();
+    await app.goto('txns');
+    await expect(page.locator('[data-testid="row"]')).not.toHaveCount(0);
+
+    // Driven from the store rather than by clicking a chip: a click scrolls
+    // its target into view first, which would move the very thing under test.
+    //
+    // The key written is deliberately not `filter`. Crossing a sub-tab is a
+    // transition now - it pushes the ledger sideways and takes it back to the
+    // top on purpose - so it is the one body change that is meant to move the
+    // scroller. `filterDir` redraws exactly the same rows without being a
+    // crossing, which is the plain re-render this test is about.
+    const before = await page.evaluate(() => {
+      const box = document.getElementById('scroll');
+      // Focus first: focusing a field at the top of a scroller pulls it back
+      // into view, which would undo the scroll this test is about to check.
+      document.getElementById('search-input').focus();
+      box.scrollTop = Math.min(140, box.scrollHeight - box.clientHeight);
+      window.__paisa.set({ filterDir: -window.__paisa.ui.filterDir });
+      return box.scrollTop;
+    });
+    expect(before, 'the ledger is too short for this test').toBeGreaterThan(0);
+    await expect(page.locator('[data-testid="row"]')).not.toHaveCount(0);
+
+    const after = await page.evaluate(() => ({
+      top: document.getElementById('scroll').scrollTop,
+      focused: document.activeElement && document.activeElement.id
+    }));
+    // Nothing carries these across a pass any more, because nothing disturbs
+    // them: the scroller and the field are the same nodes they were.
+    expect(after.top, 'the list jumped').toBe(before);
+    expect(after.focused, 'the keyboard was dropped').toBe('search-input');
+  });
+
+  test('a sheet is patched, not rebuilt, by a tap inside it', async ({ app, page }) => {
+    await app.open();
+    await app.openFilledSheet();
+
+    await page.evaluate(() => {
+      document.querySelectorAll('[data-testid="sheet"], [data-testid="sheet"] *')
+        .forEach(n => { n.__stamp = 1; });
+    });
+
+    await page.locator('#note-input').fill('dinner');
+
+    const after = await page.evaluate(() => ({
+      sheet: !!document.querySelector('[data-testid="sheet"]').__stamp,
+      body: !!document.querySelector('[data-testid="sheet-body"]').__stamp,
+      note: !!document.querySelector('#note-input').__stamp,
+      entering: document.querySelector('[data-testid="sheet"]').classList.contains('sheet--enter')
+    }));
+    // The same sheet after a tap inside it is not an entrance: it keeps its
+    // nodes and the slide-up it already played. Where it was scrolled to is
+    // covered by 'scroll position survives a tap inside the sheet' above.
+    expect(after.sheet, 'the sheet was rebuilt').toBe(true);
+    expect(after.body, 'the sheet body was rebuilt').toBe(true);
+    expect(after.note, 'the field being typed into was replaced').toBe(true);
+    expect(after.entering, 'the slide-up was queued to replay').toBe(false);
+  });
+
+  test('the date picker holds the month you paged to', async ({ app, page }) => {
+    await app.open();
+    await app.openFilledSheet();
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]').last().click();
+    await expect(page.locator('[data-testid="cal-month"]')).toHaveText('August 2026');
+
+    await page.locator('[data-testid="cal-next"]').click();
+    await expect(page.locator('[data-testid="cal-month"]')).toHaveText('September 2026');
+
+    // The month on show lives in the picker, not in the store, so a pass that
+    // is about something else must leave the whole widget alone - and must not
+    // leave the live grid wired to a copy that is not in the document.
+    await page.evaluate(() => window.__paisa.set({ entryNote: 'x' }));
+    await expect(page.locator('[data-testid="cal-month"]')).toHaveText('September 2026');
+
+    await page.locator('[data-testid="cal-next"]').click();
+    await expect(page.locator('[data-testid="cal-month"]')).toHaveText('October 2026');
+    await page.locator('[data-testid="cal-day"][data-day="9"]').click();
+    expect(await page.evaluate(() => window.__paisa.ui.entryDate)).toBe('2026-10-09');
+  });
+
+  test('the theme flips without disturbing the screen under it', async ({ app, page }) => {
+    await app.open();
+    await app.goto('settings');
+    const before = await page.evaluate(() => {
+      const box = document.getElementById('scroll');
+      box.scrollTop = Math.min(120, box.scrollHeight - box.clientHeight);
+      return box.scrollTop;
+    });
+    expect(before).toBeGreaterThan(0);
+
+    await page.evaluate(() => window.__paisa.toggleDark());
+
+    const after = await page.evaluate(() => ({
+      top: document.getElementById('scroll').scrollTop,
+      dark: document.documentElement.dataset.dark,
+      ui: window.__paisa.ui.dark
+    }));
+    // Repainting is CSS's job: the theme is a data attribute and a table of
+    // custom properties, so the tree has nothing to do but the switch itself.
+    expect(after.dark).toBe(after.ui ? '1' : '0');
+    expect(after.top, 'the settings list jumped').toBe(before);
   });
 
   test('balances are memoised across a render', async ({ app, page }) => {
@@ -159,7 +295,7 @@ test.describe('dates', () => {
     expect(await page.evaluate(() => window.__paisa.ui.entryDate)).toBe('2026-08-27');
   });
 
-  test('the calendar writes back the day you tap', async ({ app, page }) => {
+  test('the day you tap is written and the dialog closes on that tap', async ({ app, page }) => {
     await app.open();
     await app.openFilledSheet();
 
@@ -167,10 +303,64 @@ test.describe('dates', () => {
     await expect(page.locator('[data-testid="datepicker"]')).toBeVisible();
     await expect(page.locator('[data-testid="cal-month"]')).toHaveText('August 2026');
 
+    // One tap is the whole interaction. There is no Done bar to find, and the
+    // sheet under the dialog is reachable again the moment the date is chosen.
     await page.locator('[data-testid="cal-day"][data-day="1"]').click();
 
-    await page.locator('[data-foot="panel"] [data-testid="panelhead-done"]').click();
+    await expect(page.locator('[data-testid="datedialog"]')).toHaveCount(0);
     expect(await page.evaluate(() => window.__paisa.ui.entryDate)).toBe('2026-08-01');
+    expect(await page.evaluate(() => window.__paisa.ui.dateOpen)).toBe(false);
+    await expect(page.locator('[data-testid="sheet"]')).toBeVisible();
+  });
+
+  test('tapping beside the card puts the dialog away and leaves the sheet', async ({ app, page }) => {
+    await app.open();
+    await app.openFilledSheet();
+
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]').last().click();
+    await expect(page.locator('[data-testid="datedialog"]')).toBeVisible();
+
+    // The scrim, not the card: a tap outside is how a dialog is dismissed, and
+    // until it was the sheet behind it could not be touched at all.
+    await page.locator('[data-testid="date-scrim"]').click({ position: { x: 8, y: 8 } });
+
+    await expect(page.locator('[data-testid="datedialog"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="sheet"]')).toBeVisible();
+    // Dismissing is not cancelling: the date on show is the one it opened with.
+    expect(await page.evaluate(() => window.__paisa.ui.entryDate)).toBe('2026-08-28');
+
+    // And the sheet is live again, which is the point of getting the panel out
+    // of the footer.
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]', { hasText: 'Yesterday' }).click();
+    expect(await page.evaluate(() => window.__paisa.ui.entryDate)).toBe('2026-08-27');
+  });
+
+  test('the head climbs to months and years and back down to a day', async ({ app, page }) => {
+    await app.open();
+    await app.openFilledSheet();
+
+    await page.locator('[data-testid="daterow"] [data-testid="chip"]').last().click();
+    const head = page.locator('[data-testid="cal-month"]');
+
+    // Up two grains: the month grid, then the page of years around it.
+    await head.click();
+    await expect(head).toHaveText('2026');
+    await head.click();
+    await expect(head).toHaveText('2016 – 2027');
+
+    // Chevrons step whichever grain is on show - a page of twelve years here.
+    await page.locator('[data-testid="cal-prev"]').click();
+    await expect(head).toHaveText('2004 – 2015');
+    await page.locator('[data-testid="cal-next"]').click();
+
+    // And picking a cell walks back down, one grain per tap.
+    await page.locator('[data-testid="cal-yearcell"][data-year="2024"]').click();
+    await expect(head).toHaveText('2024');
+    await page.locator('[data-testid="cal-monthcell"][data-month="3"]').click();
+    await expect(head).toHaveText('March 2024');
+
+    await page.locator('[data-testid="cal-day"][data-day="12"]').click();
+    expect(await page.evaluate(() => window.__paisa.ui.entryDate)).toBe('2024-03-12');
   });
 
   test('the calendar steps between months', async ({ app, page }) => {
@@ -193,6 +383,12 @@ test.describe('dates', () => {
     await expect(page.locator('input[type="date"]')).toHaveCount(0);
     await page.locator('[data-testid="daterow"] [data-testid="chip"]').first().click();
     await expect(page.locator('[data-testid="datepicker"]')).toBeVisible();
+
+    // The recurring sheet writes two fields from one tap, and neither of them
+    // is in the store's ui root - they are on the draft the sheet is editing.
+    await page.locator('[data-testid="cal-day"][data-day="3"]').click();
+    const draft = await page.evaluate(() => window.__paisa.ui.editRecurring);
+    expect(draft.nextDue).toBe('2026-09-03');
   });
 });
 
@@ -802,6 +998,87 @@ test.describe('pulling a sheet down', () => {
     expect(await page.evaluate(() => window.__paisa.ui.entryType)).toBe('expense');
   });
 
+  /**
+   * The same pull as a finger makes it.
+   *
+   * Worth its own test rather than trusting the mouse one: the mouse path runs
+   * on pointer events, and on a device those are cancelled the moment Chrome
+   * decides the swipe belongs to a scroller - which is exactly how this
+   * gesture came to be broken on the phone while every mouse test was green.
+   */
+  async function pullByTouch(page, handle, distance, steps = 8) {
+    await page.locator(handle).evaluate((node, { distance, steps }) => {
+      const box = node.getBoundingClientRect();
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+
+      const send = (type, clientY) => {
+        const touch = new Touch({ identifier: 1, target: node, clientX: x, clientY });
+        const list = type === 'touchend' ? [] : [touch];
+        node.dispatchEvent(new TouchEvent(type, {
+          bubbles: true, cancelable: true, touches: list,
+          targetTouches: list, changedTouches: [touch]
+        }));
+      };
+
+      send('touchstart', y);
+      for (let i = 1; i <= steps; i++) send('touchmove', y + (distance * i) / steps);
+      send('touchend', y + distance);
+    }, { distance, steps });
+  }
+
+  test('a finger pull on the grabber closes the sheet', async ({ app, page }) => {
+    await app.open();
+    await app.openAddSheet();
+
+    await pullByTouch(page, '[data-testid="sheet-grab"]', 220);
+
+    await expect(page.locator('[data-sheet="add"]')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__paisa.ui.sheet)).toBe(null);
+  });
+
+  test('a short finger pull springs back', async ({ app, page }) => {
+    await app.open();
+    await app.openAddSheet();
+
+    await pullByTouch(page, '[data-testid="sheet-grab"]', 40);
+
+    await expect(page.locator('[data-sheet="add"]')).toBeVisible();
+  });
+
+  test('the sms sheet answers a finger too', async ({ app, page }) => {
+    await app.open();
+    await app.goto('settings');
+    await page.getByText('Paste an SMS', { exact: true }).click();
+    await expect(page.locator('[data-sheet="sms"]')).toBeVisible();
+
+    await pullByTouch(page, '[data-testid="sheet-grab"]', 220);
+
+    await expect(page.locator('[data-sheet="sms"]')).toHaveCount(0);
+  });
+
+  /*
+   * The gesture only survives on a device because the handles opt out of the
+   * browser's own panning. Asserted directly: nothing else in the suite would
+   * notice this going missing, and without it the drag is dead on a phone
+   * while every other test here still passes.
+   */
+  test('the grabber and the head are exempt from browser panning',
+    async ({ app, page }) => {
+      await app.open();
+      await app.openAddSheet();
+
+      const touchAction = (sel) => page.locator(sel)
+        .evaluate(n => getComputedStyle(n).touchAction);
+
+      expect(await touchAction('[data-testid="sheet-grab"]')).toBe('none');
+      // The head is the sheet's second child - grabber, head, body, foot.
+      expect(await page.locator('[data-testid="sheet"] > *').nth(1)
+        .evaluate(n => getComputedStyle(n).touchAction)).toBe('none');
+      // The body keeps its scrolling.
+      expect(await touchAction('[data-testid="sheet-body"]')).not.toBe('none');
+    });
+
   test('the keypad is not a drag handle', async ({ app, page }) => {
     await app.open();
     await app.openFilledSheet();
@@ -1082,6 +1359,69 @@ test.describe('filling an entry from an SMS', () => {
       const db = await app.db();
       expect(db.txns.find(t => t.source === 'sms').amount).toBe(849);
     });
+});
+
+/* ---------------- Home: the debt toggle ---------------- */
+
+/** The headline, as a number. `fmt` groups thousands and prefixes the symbol. */
+async function headline(page) {
+  const text = await page.locator('[data-testid="balance-value"]').innerText();
+  return Number(text.replace(/[^0-9.-]/g, ''));
+}
+
+const debtChip = (page) =>
+  page.locator('[data-testid="chip"]', { hasText: 'Include debt' });
+
+test.describe('home debt toggle', () => {
+  test('the headline nets in lent and owed money, and remembers the choice',
+    async ({ app, page }) => {
+      await app.open();
+
+      const sums = await page.evaluate(() => ({
+        net: window.__paisa.netWorth(),
+        debt: window.__paisa.debtTotals().net
+      }));
+      expect(sums.debt,
+        'the seed needs open debts, otherwise the toggle is hidden and this proves nothing'
+      ).not.toBe(0);
+
+      // Off by default: the headline is net worth alone.
+      await expect(debtChip(page)).toHaveAttribute('data-on', '0');
+      expect(await headline(page)).toBe(Math.round(sums.net));
+
+      await debtChip(page).click();
+
+      await expect(debtChip(page)).toHaveAttribute('data-on', '1');
+      expect(await headline(page)).toBe(Math.round(sums.net + sums.debt));
+
+      // The preference is written to the settings table, so it survives a boot.
+      await page.reload();
+      await page.waitForSelector('#boot[data-gone="1"]', { state: 'attached' });
+      await expect(debtChip(page)).toHaveAttribute('data-on', '1');
+      expect(await headline(page)).toBe(Math.round(sums.net + sums.debt));
+    });
+
+  test('the owing strip sits above the primary card, not below the accounts',
+    async ({ app, page }) => {
+      await app.open();
+
+      const y = async (locator) => (await locator.first().boundingBox()).y;
+
+      const owing = await y(page.getByText('Owed to you'));
+      expect(owing).toBeGreaterThan(await y(page.locator('[data-testid="balance-value"]')));
+      expect(owing).toBeLessThan(await y(page.getByText('· primary')));
+      expect(owing).toBeLessThan(await y(page.locator('[data-testid="row"]')));
+    });
+
+  test('no open debts means no toggle and no strip', async ({ app, page }) => {
+    const db = await freshDb(page);
+    db.debts = [];
+    db.debtPayments = [];
+    await app.open(db);
+
+    await expect(debtChip(page)).toHaveCount(0);
+    await expect(page.getByText('Owed to you')).toHaveCount(0);
+  });
 });
 
 /** A pristine seeded database, read from a throwaway app load. */

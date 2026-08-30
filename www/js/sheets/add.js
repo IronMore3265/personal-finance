@@ -4,8 +4,9 @@
 // The sheet reveals itself as it is filled in: no account is preselected, the
 // category grid only appears once one is, and it folds back to the single
 // chosen chip afterwards. The keypad is up only while a number is being
-// entered, and the date opens the app's own wheel rather than the platform
-// dialog - both are panels over the sheet, dismissed by a Done bar.
+// entered, and the date opens the app's own calendar rather than the platform
+// dialog - the keypad as a panel over the sheet, the calendar as a dialog
+// floating clear of it.
 //
 // The same sheet edits an existing transaction: `ui.entryId` set means edit
 // mode, which adds a title row with a delete affordance and changes the verb
@@ -17,7 +18,7 @@ import { store } from '../core/store.js';
 import * as calc from '../core/calc.js';
 import { chip, fieldLabel } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
-import { openDatePicker, dateLabel } from '../ui/datepicker.js';
+import { dateLabel } from '../ui/datepicker.js';
 import { keypad, panelHead } from '../ui/keypad.js';
 import { accountPicker, categoryPicker } from './pickers.js';
 import { SYM } from '../data/seed.js';
@@ -285,7 +286,7 @@ function itemList() {
   return el('div', { class: 'mt-[18px]' }, [head, ...rows]);
 }
 
-/** Date: two quick chips, plus the app's own wheel for anything else. */
+/** Date: two quick chips, plus the app's own calendar for anything else. */
 function dateRow() {
   const value = store.ui.entryDate || store.today;
   const today = store.today;
@@ -307,10 +308,7 @@ function dateRow() {
       chip(
         dateLabel(value),
         value !== today && value !== yesterday,
-        () => {
-          store.set({ keypadOpen: false, entryFocusItem: null });
-          openDatePicker(value, today, (next) => store.set({ entryDate: next }));
-        },
+        () => store.set({ dateOpen: true, keypadOpen: false, entryFocusItem: null }),
         icon('calendar', 14)
       )
     ])
@@ -380,6 +378,10 @@ export function renderAddSheet() {
     onClick: () => store.saveEntry()
   });
 
+  // Two footers: the keys, or just save. The calendar is no longer one of them
+  // - it floats over the sheet now, so the save button stays put while a date
+  // is being chosen. There is no "=" key either: the line above the figure
+  // already shows the whole expression and the figure shows what it comes to.
   let foot;
   if (store.ui.keypadOpen) {
     foot = el('div', {
@@ -400,4 +402,30 @@ export function renderAddSheet() {
     body,
     foot
   ]);
+}
+
+/**
+ * What the floating date dialog should show while `ui.dateOpen` is set.
+ *
+ * The shell draws the dialog, because it belongs to the overlay layer rather
+ * than to any sheet's tree - a card inside the sheet would be clipped by the
+ * body's own scroll. What goes in it is still this sheet's business, so it is
+ * described here and nowhere else.
+ *
+ * The writes read the store at the moment of the tap rather than closing over
+ * this pass's values: the dialog is kept across renders (see dateDialog), so
+ * the handlers on the live one were built when it opened and may be older than
+ * the draft they are writing to.
+ */
+export function addDateSpec() {
+  if (!store.ui.dateOpen) return null;
+  return {
+    key: 'add',
+    title: 'Date',
+    value: store.ui.entryDate || store.today,
+    // Silent: a render would rebuild the sheet under an open dialog for a
+    // label that only becomes visible once the dialog has gone.
+    onPick: (next) => store.set({ entryDate: next }, true),
+    onClose: () => store.set({ dateOpen: false })
+  };
 }

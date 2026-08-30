@@ -9,7 +9,9 @@ import { fmt, dueLabel } from '../core/format.js';
 import { store } from '../core/store.js';
 import { icon } from '../ui/icons.js';
 import { categoryChip, section, sectionMeta } from '../ui/components.js';
-import { ROW_TAP, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT, ROW_SUB, ELLIP } from '../ui/styles.js';
+import {
+  ROW_TAP, ROW_BODY, ROW_TITLE, ROW_META, ROW_RIGHT, ROW_AMT_BARE, ROW_SUB, ELLIP
+} from '../ui/styles.js';
 
 function row(b) {
   const due = b.nextDue || b.due;
@@ -31,8 +33,8 @@ function row(b) {
       })
     ]),
     el('div', { class: ROW_RIGHT }, [
-      el('div', { class: ROW_AMT + ' text-danger', text: fmt(b.amount, 'BDT') }),
-      el('div', { class: ROW_SUB + ' text-ink3', text: (store.acct(b.account) || {}).name || '' })
+      el('div', { class: ROW_AMT_BARE + ' text-danger', text: fmt(b.amount, 'BDT') }),
+      el('div', { class: ROW_SUB, text: (store.acct(b.account) || {}).name || '' })
     ])
   ]);
 }

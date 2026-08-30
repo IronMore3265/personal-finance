@@ -1,32 +1,51 @@
 // Shell: header, screen swapping, sheets, toast, FAB, nav bar.
 //
-// A render pass rebuilds only the regions the store says a change can affect.
-// Scroll position, focus and caret are carried across so typing and scrolling
-// survive a render.
+// A render pass touches only the regions the store says a change can affect,
+// and inside a region it patches rather than rebuilds - see core/dom.js. A tap
+// that changes one number rewrites that number and nothing else, so scroll
+// offsets, sideways chip scroll, focus, caret and any animation already
+// running are simply never disturbed.
+//
+// The two places that do rebuild are the two that are meant to be seen
+// arriving: moving to a different screen, and opening a different sheet. Those
+// are transitions, not re-renders, and they own the only entrance animations
+// left in the shell.
 
-import { el, clear } from './core/dom.js';
+import { el, clear, patch } from './core/dom.js';
 import { pushIn, stagger } from './core/motion.js';
 import { store, FILTERS } from './core/store.js';
-import { exportCsv } from './core/exporter.js';
 import * as calc from './core/calc.js';
 import { icon } from './ui/icons.js';
 import { TAP, PRESS } from './ui/styles.js';
 import { bindSheetDrag } from './ui/dragsheet.js';
 import { bindSwipe } from './core/swipe.js';
+import { dateDialog } from './ui/datepicker.js';
 
 /* Shell recipes. The nav and the header are the only chrome the app draws. */
 const STATUSBAR = 'flex-none h-9 flex items-center justify-between px-6 '
   + 'font-ui font-bold text-[11.5px] text-ink tracking-[.02em] normal-nums';
-const ICONBTN = 'flex-none w-[38px] h-[38px] rounded-full bg-soft flex '
-  + 'items-center justify-center text-ink';
-const HEADER = 'flex-none flex items-center justify-between gap-2.5 pt-1.5 px-[18px] pb-2.5';
-const NAV_BAR = 'h-[calc(68px+var(--safe-b))] pt-[6px] pb-[var(--safe-b)] bg-surface '
+const HEADER = 'flex-none flex items-center justify-between gap-2.5 pt-1.5 px-[22px] pb-2.5';
+/*
+ * The icons are 26px rather than 22px, but the bar is only as tall as the row
+ * it holds: 12 + 26 + 8 + 6 leaves a 20px foot under the dot and nothing more.
+ * The three offsets that clear it - the scroll padding, the FAB and the toast
+ * - are keyed to this height and move with it.
+ */
+const NAV_BAR = 'h-[calc(72px+var(--safe-b))] pt-[12px] pb-[var(--safe-b)] bg-surface '
   + 'border-t border-line flex items-start';
-const NAV_ITEM = 'flex-1 flex flex-col items-center gap-1';
-const NAV_ICON = 30;
-/* The pill at the top of a sheet: what says it can be pulled down. */
-const GRABBER = 'flex-none w-[38px] h-1 rounded-pill bg-line mx-auto mt-2.5 mb-1 '
-  + '[touch-action:none]';
+const NAV_ITEM = 'flex-1 flex flex-col items-center gap-2';
+const NAV_ICON = 26;
+/*
+ * The pill at the top of a sheet: what says it can be pulled down.
+ *
+ * The pill is 38px wide but the grab target is the full width of the sheet -
+ * a thumb aims at the top edge, not at a 38x4 rectangle. `touch-action: none`
+ * is what actually makes the pull work on a device: without it the browser
+ * claims the vertical swipe for scrolling and cancels the gesture before it
+ * has moved a pixel.
+ */
+const GRAB_ZONE = 'flex-none w-full pt-2.5 pb-1 flex justify-center [touch-action:none]';
+const GRABBER = 'w-[38px] h-1 rounded-pill bg-line';
 
 import { renderHome } from './screens/home.js';
 import { renderActivity } from './screens/activity.js';
@@ -36,15 +55,15 @@ import { renderSettings } from './screens/settings.js';
 import { renderCategories } from './screens/categories.js';
 import { renderAccounts } from './screens/accounts.js';
 import { renderScheduled } from './screens/scheduled.js';
-import { renderAddSheet, saveButtonLabel } from './sheets/add.js';
+import { renderAddSheet, saveButtonLabel, addDateSpec } from './sheets/add.js';
 import { renderSmsSheet } from './sheets/sms.js';
 import { renderEntitySheet } from './sheets/entity.js';
-import { renderDebtSheet } from './sheets/debt.js';
-import { renderRecurringSheet } from './sheets/recurring.js';
+import { renderDebtSheet, debtDateSpec } from './sheets/debt.js';
+import { renderRecurringSheet, recurringDateSpec } from './sheets/recurring.js';
 import { renderSyncSheet } from './sheets/sync.js';
 
-// Home carries the wordmark instead of a title, so it has no entry here.
 const TITLES = {
+  home: 'Dashboard',
   txns: 'Activity',
   budgets: null, // depends on the Budgets/Goals/Debts segment
   reports: 'Account analytics',
@@ -72,6 +91,20 @@ const SHEETS = {
   debt: renderDebtSheet,
   recurring: renderRecurringSheet,
   sync: renderSyncSheet
+};
+
+/*
+ * The three sheets that ask for a date, and what each wants in the dialog.
+ *
+ * The dialog floats in the overlay layer rather than inside a sheet - a card
+ * in the sheet's tree would be clipped by the body's own scroll, and would
+ * scroll away with it. The shell owns the position; each sheet still owns what
+ * the dialog is for.
+ */
+const SHEET_DATES = {
+  add: addDateSpec,
+  debt: debtDateSpec,
+  recurring: recurringDateSpec
 };
 
 // Screens reached from Settings rather than from the bar; they light the same
@@ -135,14 +168,12 @@ const dom = {};
 let lastScreen = null;
 let lastFilter = null;
 let lastSheet = null;
-const scrollMemory = {};
-// Sheets are rebuilt like everything else, so their body needs the same
-// scroll-position carry the screen body has had all along - without it, every
-// tap inside the add sheet snapped it back to the top.
-let sheetScroll = 0;
 // Whether the keypad was up on the previous pass, so its slide-in animation
 // runs when it opens and not on every key thereafter.
 let lastKeypad = false;
+// The same, for the date dialog: it pops in when it opens, and then stays put
+// while you page through months inside it.
+let lastDate = false;
 
 /* ------------------------------------------------------------------ *
  * Chrome
@@ -170,57 +201,43 @@ function statusBar() {
   ]);
 }
 
-function iconBtn(name, onClick, size = 17) {
-  return el('div', { class: ICONBTN + ' ' + TAP, onClick }, [icon(name, size)]);
-}
-
-/** Home shows the wordmark; every other screen shows back / title / action. */
+/**
+ * The title, and nothing else.
+ *
+ * The bar used to carry a back arrow on the left and an export arrow on the
+ * right. Neither earned its place. Every screen the app has is one tap away on
+ * the nav bar, and the three under Settings are reached from a list you can
+ * get back to the same way - so the arrow was a second route to somewhere you
+ * were never more than one tap from, and it sat next to a title that already
+ * said where you were. The export arrow duplicated the Export row in Settings,
+ * where you go when you are looking for it, and read as "share this screen",
+ * which is not what it did.
+ *
+ * Losing both leaves the title centred by the bar rather than by two buttons,
+ * which is where it always looked centred anyway - Home has been drawing a
+ * spacer to fake exactly this.
+ */
 function header() {
   const screen = store.ui.screen;
-
-  if (screen === 'home') {
-    return el('div', { class: HEADER }, [
-      // The wordmark carries the only lime on the header: a blob behind the P.
-      el('div', { class: 'relative inline-block' }, [
-        el('div', {
-          class: 'absolute -right-[7px] -top-px w-5 h-5 rounded-full bg-[var(--accentBlob)]'
-        }),
-        el('div', {
-          class: 'relative font-ui font-bold text-[19px]/[1] text-ink '
-            + 'tracking-[-.02em] normal-nums',
-          text: 'Paisa'
-        })
-      ]),
-      // Only the theme toggle here. Settings is reached from the nav bar's
-      // person tab, which is also what lights up on its sub-screens - two
-      // doors to one room was the redundancy.
-      el('div', { class: 'flex gap-2 flex-none' }, [
-        iconBtn('moon', () => store.toggleDark())
-      ])
-    ]);
-  }
 
   const SEG_TITLE = { goals: 'Goals', debts: 'Debts', budgets: 'Budgets' };
   const title = TITLES[screen] || SEG_TITLE[store.ui.budgetSeg] || 'Budgets';
 
-  // The settings sub-screens are reached from Settings, so back goes there
-  // rather than all the way home.
-  const back = ['categories', 'accounts', 'scheduled'].includes(screen) ? 'settings' : 'home';
-
   return el('div', { class: HEADER }, [
-    iconBtn('arrowLeft', () => store.go(back), 18),
     el('div', {
       // Line-height 1.4, not 1. At /[1] the box is exactly 17px tall and the
       // ellipsis needs overflow:hidden, so the descender of the g in Settings
       // and Budgets was sliced off by the header's own bottom edge. Titles
       // without a descender - Paisa, Activity, Accounts - never showed it.
-      class: 'flex-1 text-center font-ui font-bold text-[17px]/[1.4] text-ink '
-        + 'tracking-[-.02em] normal-nums whitespace-nowrap overflow-hidden text-ellipsis',
+      //
+      // The min-height is what the buttons used to hold open. Without it the
+      // bar would lose 21px now that the row is a line of text, moving every
+      // screen up by that much.
+      class: 'flex-1 min-h-[38px] flex items-center justify-center text-center '
+        + 'font-ui font-bold text-[17px]/[1.4] text-ink tracking-[-.02em] normal-nums '
+        + 'whitespace-nowrap overflow-hidden text-ellipsis',
       text: title
-    }),
-    // "Export this view" in the prototype was a stub; here it runs the real
-    // CSV export the app already ships.
-    iconBtn('upload', () => exportCsv(store))
+    })
   ]);
 }
 
@@ -336,7 +353,14 @@ function fabStack() {
  * Render
  * ------------------------------------------------------------------ */
 
-/** Remember where the caret was so a re-render does not drop the keyboard. */
+/**
+ * Remember where the caret was, in case a rebuild drops the keyboard.
+ *
+ * Patching leaves the field itself alone, so on an ordinary pass there is
+ * nothing to restore. This is for the two passes that do replace nodes - a
+ * screen swap and a sheet opening - where the field the caret was in may not
+ * survive.
+ */
 function captureFocus() {
   const a = document.activeElement;
   if (!a || !a.id || !('selectionStart' in a)) return null;
@@ -346,7 +370,7 @@ function captureFocus() {
 function restoreFocus(snapshot) {
   if (!snapshot) return;
   const node = document.getElementById(snapshot.id);
-  if (!node) return;
+  if (!node || node === document.activeElement) return;
   node.focus({ preventScroll: true });
   try { node.setSelectionRange(snapshot.start, snapshot.end); } catch { /* not a text input */ }
 }
@@ -354,10 +378,10 @@ function restoreFocus(snapshot) {
 /**
  * Repaint just the amount line and the save button.
  *
- * Every keypad tap used to rebuild the whole sheet - nine account chips, the
- * category grid, the item list - to change one number. These are the only
- * nodes that actually depend on the amount, so they are patched in place. If
- * any of them is missing the caller falls back to a full sheet render.
+ * The keypad is the hottest control in the app, and these are the only nodes a
+ * keystroke can reach, so they are written directly rather than through a
+ * patch pass. If any of them is missing the caller falls back to a full sheet
+ * render.
  */
 function patchAmount() {
   const val = document.querySelector('[data-testid="amount-val"]');
@@ -399,8 +423,9 @@ function patchAmount() {
  * right edge - the Netflix rule is charged to the sixth account, so the sheet
  * opened showing three chips, none of them the one in use.
  *
- * Only nudges rows where the selection is actually out of view, so a row the
- * user has scrolled by hand is left where they put it.
+ * On arrival only. The rows survive an ordinary pass now, keeping whatever
+ * scroll the user left them at, and nudging them again on every render would
+ * drag a row that had just been scrolled by hand back under the selection.
  */
 function revealSelectedChips(scope) {
   for (const row of scope.querySelectorAll('[data-testid="chiprow"]')) {
@@ -413,48 +438,25 @@ function revealSelectedChips(scope) {
   }
 }
 
-/**
- * Carry the sideways scroll of every `.chiprow` across a rebuild.
- *
- * The rows are recreated from scratch on each render, so a row the user had
- * scrolled - the icon picker's group tabs, the Reports range strip - snapped
- * back to the left on every tap. Matched by position, which is stable because
- * the rebuild draws the same rows in the same order.
- */
-function readChipScroll(scope) {
-  return [...scope.querySelectorAll('[data-testid="chiprow"]')].map(n => n.scrollLeft);
-}
-
-function writeChipScroll(scope, saved) {
-  const rows = scope.querySelectorAll('[data-testid="chiprow"]');
-  saved.forEach((left, i) => { if (rows[i] && left) rows[i].scrollLeft = left; });
-}
-
 function renderSheet() {
-  // A different sheet - or none at all - is an entrance. The same sheet being
-  // redrawn after a tap inside it is not, and must not replay the slide-up.
+  // A different sheet - or none at all - is an entrance, and the only case
+  // that builds from scratch. The same sheet redrawn after a tap inside it is
+  // patched, so it neither replays the slide-up nor loses where it was
+  // scrolled to.
   const entering = store.ui.sheet !== lastSheet;
   const keysEntering = store.ui.keypadOpen && !lastKeypad;
-
-  if (dom.overlay.firstChild) {
-    const body = dom.overlay.querySelector('[data-testid="sheet-body"]');
-    if (body) sheetScroll = body.scrollTop;
-  }
-  if (entering) sheetScroll = 0;
-  const chipScroll = readChipScroll(dom.overlay);
 
   lastSheet = store.ui.sheet;
   lastKeypad = !!store.ui.keypadOpen;
 
-  clear(dom.overlay);
-  if (!store.ui.sheet) return;
+  if (!store.ui.sheet) { clear(dom.overlay); lastDate = false; return; }
 
-  dom.overlay.appendChild(el('div', {
+  const scrim = el('div', {
     class: 'absolute inset-0 bg-black/50 z-10'
       + (entering ? ' [animation:fadeIn_var(--dur-micro)_ease]' : ''),
     dataset: { testid: 'scrim' },
     onClick: () => store.set({ sheet: null })
-  }));
+  });
 
   const build = SHEETS[store.ui.sheet] || renderAddSheet;
   const sheet = build();
@@ -463,43 +465,72 @@ function renderSheet() {
   // share a size class.
   sheet.dataset.testid = 'sheet';
   sheet.dataset.sheet = store.ui.sheet;
-  if (entering) sheet.classList.add('sheet--enter');
 
   // A grabber, and the gesture it advertises. Added here rather than in the
   // six sheet builders so every sheet gets both without knowing about either.
-  sheet.insertBefore(el('div', { class: GRABBER, dataset: { testid: 'sheet-grab' } }),
+  sheet.insertBefore(
+    el('div', { class: GRAB_ZONE, dataset: { testid: 'sheet-grab' } },
+      [el('div', { class: GRABBER })]),
     sheet.firstChild);
-  bindSheetDrag(sheet, () => store.set({ sheet: null }));
 
-  dom.overlay.appendChild(sheet);
+  // The date dialog, when the open sheet is asking for one. It goes in the
+  // overlay beside the sheet rather than inside it, so the sheet's scroll and
+  // its rounded clip have nothing to do with where the card sits - and so a
+  // tap beside the card reaches a scrim of its own, which puts the dialog away
+  // and leaves the sheet open underneath.
+  const spec = (SHEET_DATES[store.ui.sheet] || (() => null))();
+  const dateEntering = !!spec && !lastDate;
+  lastDate = !!spec;
+
+  const dialog = spec ? dateDialog({ ...spec, today: store.today }) : null;
+  if (dialog && dateEntering) {
+    dialog.querySelector('[data-testid="datedialog-card"]').classList.add('dialog--enter');
+  }
+
+  if (entering) {
+    sheet.classList.add('sheet--enter');
+    clear(dom.overlay);
+    dom.overlay.appendChild(scrim);
+    dom.overlay.appendChild(sheet);
+    if (dialog) dom.overlay.appendChild(dialog);
+  } else {
+    patch(dom.overlay, [scrim, sheet, dialog].filter(Boolean));
+  }
+
+  // The node actually on screen, which after a patch is the one that was
+  // already there rather than the one just built. Found by its testid rather
+  // than as the last child, which is the dialog whenever one is open.
+  const live = dom.overlay.querySelector('[data-testid="sheet"]');
+  // Idempotent: re-binding a sheet that is already bound only re-claims the
+  // touch handles that the patch pass cleared off its children.
+  bindSheetDrag(live, () => store.set({ sheet: null }));
 
   if (keysEntering) {
-    const foot = sheet.querySelector('[data-foot="keys"]');
+    const foot = live.querySelector('[data-foot="keys"]');
     if (foot) foot.classList.add('sheet__foot--enter');
   }
 
-  const body = dom.overlay.querySelector('[data-testid="sheet-body"]');
-  if (body && sheetScroll) body.scrollTop = sheetScroll;
-  if (!entering) writeChipScroll(dom.overlay, chipScroll);
-  revealSelectedChips(dom.overlay);
+  if (entering) revealSelectedChips(dom.overlay);
 }
 
 function render(_store, regions) {
   const r = regions || new Set(['header', 'body', 'sheet', 'toast', 'nav']);
-  const focus = captureFocus();
   const screen = store.ui.screen;
   const changed = screen !== lastScreen;
+  // Only the two rebuilding paths can lose the caret. On a patched pass the
+  // field is never replaced, so there is nothing to snapshot.
+  const focus = ((changed && r.has('body')) || r.has('sheet')) ? captureFocus() : null;
 
-  // The amount region is a patch, not a rebuild. When the nodes are not there
-  // (the sheet was just opened) it upgrades itself to a sheet render.
+  // The amount region is a direct write, not even a patch. When the nodes are
+  // not there (the sheet was just opened) it upgrades itself to a sheet render.
   if (r.has('amount') && !r.has('sheet')) {
     if (patchAmount()) { restoreFocus(focus); return; }
     r.add('sheet');
   }
 
   if (r.has('header')) {
-    clear(dom.header);
-    dom.header.appendChild(header());
+    const bar = header();
+    patch(dom.header, bar ? [bar] : []);
   }
 
   if (r.has('body')) {
@@ -508,26 +539,30 @@ function render(_store, regions) {
     const sub = SUB_TABS[screen];
     const subChanged = !changed && !!sub && store.ui[sub.key] !== lastFilter;
 
-    if (!changed && dom.scroll) scrollMemory[screen] = dom.scroll.scrollTop;
-    const chipScroll = changed ? [] : readChipScroll(dom.scroll);
-
-    clear(dom.scroll);
     const content = SCREENS[screen]();
-    content.forEach(node => dom.scroll.appendChild(node));
 
     if (changed) {
+      // A different screen is a transition, not a re-render: the outgoing
+      // content has nothing in common with the incoming one, and the push and
+      // the stagger are the whole point of the moment.
+      clear(dom.scroll);
+      content.forEach(node => dom.scroll.appendChild(node));
       pushIn(dom.scroll, store.ui.direction);
       stagger(dom.scroll);
       dom.scroll.scrollTop = 0;
     } else if (subChanged) {
+      // Same screen, different sub-tab: patch like any re-render so the chip
+      // row itself is left alone, then travel only the region under it.
+      patch(dom.scroll, content);
       const page = dom.scroll.querySelector('[data-testid="activity-list"]') || dom.scroll;
       pushIn(page, store.ui.filterDir);
       stagger(page);
       dom.scroll.scrollTop = 0;
-      writeChipScroll(dom.scroll, chipScroll);
     } else {
-      dom.scroll.scrollTop = scrollMemory[screen] || 0;
-      writeChipScroll(dom.scroll, chipScroll);
+      // Same screen: write the differences into what is already on it. Scroll
+      // position, sideways chip scroll, focus and caret are preserved by never
+      // being disturbed, so none of them need saving and restoring around it.
+      patch(dom.scroll, content);
     }
     lastScreen = screen;
     lastFilter = sub ? store.ui[sub.key] : null;
@@ -537,17 +572,14 @@ function render(_store, regions) {
   if (r.has('sheet') || r.has('amount')) renderSheet();
 
   if (r.has('toast')) {
-    clear(dom.toast);
-    if (store.ui.toast) {
-      dom.toast.appendChild(el('div', {
-        class: 'absolute left-[18px] right-[18px] bottom-[calc(88px+var(--safe-b))] '
-          + 'bg-ink text-bg rounded-box py-[14px] px-4 font-ui font-semibold '
-          + 'text-[12px]/[1.4] text-center z-[15] normal-nums '
-          + '[animation:popIn_var(--dur-micro)_ease]',
-        dataset: { testid: 'toast' },
-        text: store.ui.toast
-      }));
-    }
+    patch(dom.toast, store.ui.toast ? [el('div', {
+      class: 'absolute left-[22px] right-[22px] bottom-[calc(92px+var(--safe-b))] '
+        + 'bg-ink text-bg rounded-box py-[14px] px-4 font-ui font-semibold '
+        + 'text-[12px]/[1.4] text-center z-[15] normal-nums '
+        + '[animation:popIn_var(--dur-micro)_ease]',
+      dataset: { testid: 'toast' },
+      text: store.ui.toast
+    })] : []);
   }
 
   if (r.has('nav')) {
@@ -575,8 +607,13 @@ async function wireNative() {
   }
 
   if (App) {
-    // Back closes a sheet first, then walks back to Home, then exits.
+    // Back closes the date dialog first, then the sheet under it, then walks
+    // back to Home, then exits - innermost thing on the screen first. This is
+    // the only back affordance now that the header has none, so it has to
+    // unwind the whole stack rather than just the sheet.
     App.addListener('backButton', () => {
+      const spec = (SHEET_DATES[store.ui.sheet] || (() => null))();
+      if (spec) { spec.onClose(); return; }
       if (store.ui.sheet) { store.set({ sheet: null }); return; }
       if (store.ui.fabMenu) { store.set({ fabMenu: false }); return; }
       if (store.ui.screen !== 'home') { store.go('home'); return; }

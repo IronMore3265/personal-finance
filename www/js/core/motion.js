@@ -28,9 +28,25 @@ export const reducedMotion = () =>
 export function stagger(host, step = 40, max = 10) {
   if (reducedMotion()) return;
   host.classList.add('stagger');
-  Array.from(host.children).forEach((child, i) => {
+  const kids = Array.from(host.children);
+  kids.forEach((child, i) => {
     child.style.animationDelay = Math.min(i, max) * step + 'ms';
   });
+
+  // Swept up once the arrival is over.
+  //
+  // The class and the per-row delays used to be left on the host for good. The
+  // rows are patched rather than rebuilt now, and a patch rewrites the style
+  // attribute of any row whose content moved - which, with a delay still on it
+  // and `.stagger` still on the host, restarted the fade-up. Every filter tap
+  // and every keystroke in the search field made the list flicker back in.
+  clearTimeout(host.__stagger);
+  // The last row starts at max*step and runs for --dur-short (320ms); the rest
+  // is slack for a frame that arrived late.
+  host.__stagger = setTimeout(() => {
+    host.classList.remove('stagger');
+    for (const child of host.children) child.style.animationDelay = '';
+  }, max * step + 320 + 200);
 }
 
 /**
@@ -41,7 +57,37 @@ export function pushIn(host, direction) {
   if (reducedMotion()) return;
   host.classList.remove('screen--in-right', 'screen--in-left');
   void host.offsetWidth; // restart the animation
-  host.classList.add(direction < 0 ? 'screen--in-left' : 'screen--in-right');
+  const cls = direction < 0 ? 'screen--in-left' : 'screen--in-right';
+  host.classList.add(cls);
+  // Taken off again when it lands, so the class is a record of a move that is
+  // happening rather than one that happened. Left on, its `both` fill keeps
+  // holding the surface at the end of a travel it already finished, and the
+  // next thing to touch the host restarts it.
+  clearTimeout(host.__push);
+  // --dur-screen is 600ms; the rest is slack for a frame that arrived late.
+  host.__push = setTimeout(() => host.classList.remove(cls), 800);
+}
+
+/**
+ * Pattern B, across grains rather than along one. The date picker's panes hold
+ * the same moment at three magnifications, so moving between them is a change
+ * of distance, not of place: going up to a coarser grain the arriving pane
+ * starts oversized and pulls back, coming down it starts small and settles in.
+ * A sideways push would say the months are next to the days, which they are
+ * not - they are the same days, further away.
+ */
+export function zoomIn(host, depth) {
+  if (reducedMotion()) return;
+  host.classList.remove('pane--wider', 'pane--closer');
+  void host.offsetWidth; // restart the animation
+  const cls = depth > 0 ? 'pane--wider' : 'pane--closer';
+  host.classList.add(cls);
+  // Taken off again when it lands, for the same reason pushIn does: a class
+  // left on is a move that never finishes, and the next thing to touch the
+  // host restarts it.
+  clearTimeout(host.__zoom);
+  // --dur-short is 320ms; the rest is slack for a frame that arrived late.
+  host.__zoom = setTimeout(() => host.classList.remove(cls), 520);
 }
 
 /**
