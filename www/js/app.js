@@ -246,17 +246,96 @@ function nav() {
   }));
 }
 
-/** Lime FAB, floating clear of the bar rather than notched into it. */
-function fab() {
-  return el('div', {
+/*
+ * What the + fans out into.
+ *
+ * Three things get logged in this app and they are three different editors,
+ * so the FAB stopped being a shortcut to one of them and became the way in to
+ * all three. Ordered by how often they are reached for, nearest the thumb
+ * first - the list grows upward from the button.
+ *
+ * The two payloads come from the store rather than being written here: the
+ * Debts and Scheduled screens open the same editors and have to hand them the
+ * same shape.
+ */
+const FAB_MENU = [
+  ['coin', 'Log transaction',
+    () => store.set(store.resetEntry({ sheet: 'add', fabMenu: false }))],
+  ['bell', 'Scheduled expense',
+    () => store.set({ sheet: 'recurring', editRecurring: store.newRecurring(), fabMenu: false })],
+  ['transfer', 'Debt / receivable',
+    () => store.set({ sheet: 'debt', editDebt: store.newDebt(), fabMenu: false })]
+];
+
+const FAB_ITEM = 'flex items-center gap-2.5 pl-[13px] pr-[15px] py-[11px] rounded-pill '
+  + 'bg-surface text-ink shadow-[var(--sh-fab)] whitespace-nowrap';
+const FAB_ITEM_ICON = 'flex-none w-7 h-7 rounded-full bg-soft flex items-center '
+  + 'justify-center text-ink2';
+
+/**
+ * Lime FAB, floating clear of the bar rather than notched into it - and the
+ * menu it opens.
+ *
+ * Drawn into the nav layer rather than the sheet overlay because it belongs to
+ * the button, not to the content: the FAB has to stay lit above its own scrim,
+ * which #overlay's z-index would have put it under.
+ */
+function fabStack() {
+  const open = store.ui.fabMenu;
+  const out = [];
+
+  if (open) {
+    // Tapping anywhere else puts the menu away. The nav bar sits under this,
+    // which is deliberate - a mis-aimed tab tap should close the menu rather
+    // than navigate out from under it.
+    out.push(el('div', {
+      class: 'absolute inset-0 bg-black/40 z-[3] [animation:fadeIn_var(--dur-micro)_ease]',
+      dataset: { testid: 'fab-scrim' },
+      onClick: () => store.set({ fabMenu: false })
+    }));
+
+    out.push(el('div', {
+      // Bottom is the FAB's own offset plus its 56px height and a 14px gap,
+      // so the stack sits on the button rather than beside it. Right-aligned
+      // to the same edge, and column-reverse so the first entry in the list
+      // is the one nearest the thumb.
+      class: 'absolute right-[22px] bottom-[calc(180px+var(--safe-b))] z-[4] '
+        + 'flex flex-col-reverse items-end gap-2.5',
+      dataset: { testid: 'fab-menu' }
+    }, FAB_MENU.map(([glyph, label, onClick], i) => el('div', {
+      class: FAB_ITEM + ' ' + TAP,
+      dataset: { testid: 'fab-item' },
+      // Staggered so the stack unrolls from the button outward. The delay is
+      // on the animation, not a timer, so a fast second tap cannot leave an
+      // item mid-flight - and it is a multiple of the duration token rather
+      // than a fixed number of ms, so reduced motion zeroes it along with
+      // everything else instead of leaving an invisible item waiting to start.
+      style: {
+        animation: 'popIn var(--dur-micro) ease backwards',
+        animationDelay: 'calc(var(--dur-micro) * ' + (i * 0.22).toFixed(2) + ')'
+      },
+      onClick
+    }, [
+      el('div', { class: FAB_ITEM_ICON }, [icon(glyph, 16, { weight: 1.9 })]),
+      el('div', {
+        class: 'font-ui font-semibold text-[13px]/[1] normal-nums',
+        text: label
+      })
+    ]))));
+  }
+
+  out.push(el('div', {
     class: 'absolute right-[22px] bottom-[calc(110px+var(--safe-b))] w-14 h-14 '
       + 'rounded-full bg-accent text-accent-ink flex items-center justify-center '
-      + 'shadow-[var(--sh-fab)] z-[4] ' + PRESS,
-    dataset: { testid: 'fab' },
-    // Always a blank draft: the sheet doubles as the editor, so without this
-    // the FAB would reopen whatever transaction was last edited.
-    onClick: () => store.set(store.resetEntry({ sheet: 'add' }))
-  }, [icon('plus', 24, { weight: 2.4 })]);
+      // PRESS already transitions transform, so the rotate rides on it.
+      + 'shadow-[var(--sh-fab)] z-[4] ' + PRESS + (open ? ' rotate-45' : ''),
+    dataset: { testid: 'fab', open: open ? '1' : '0' },
+    // The + turns into a × by rotating, so the same glyph is both states and
+    // there is nothing to cross-fade.
+    onClick: () => store.set({ fabMenu: !open })
+  }, [icon('plus', 24, { weight: 2.4 })]));
+
+  return out;
 }
 
 /* ------------------------------------------------------------------ *
@@ -479,7 +558,7 @@ function render(_store, regions) {
 
   if (r.has('nav')) {
     clear(dom.nav);
-    dom.nav.appendChild(fab());
+    fabStack().forEach(node => dom.nav.appendChild(node));
     dom.nav.appendChild(nav());
   }
 
@@ -505,6 +584,7 @@ async function wireNative() {
     // Back closes a sheet first, then walks back to Home, then exits.
     App.addListener('backButton', () => {
       if (store.ui.sheet) { store.set({ sheet: null }); return; }
+      if (store.ui.fabMenu) { store.set({ fabMenu: false }); return; }
       if (store.ui.screen !== 'home') { store.go('home'); return; }
       App.exitApp();
     });
@@ -536,7 +616,9 @@ async function boot() {
   bindSwipe(dom.scroll, {
     onSwipe: swipe,
     canSwipe: (dir) => !!swipeTarget(dir),
-    enabled: () => !store.ui.sheet
+    // The + menu's scrim already swallows the pointer, but say it here too:
+    // the menu owns the screen while it is open, same as a sheet does.
+    enabled: () => !store.ui.sheet && !store.ui.fabMenu
   });
 
   await store.init();

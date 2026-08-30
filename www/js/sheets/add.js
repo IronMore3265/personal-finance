@@ -102,6 +102,31 @@ function typeTabs() {
   ]);
 }
 
+/**
+ * The type tabs, and beside them the way in to the SMS parser.
+ *
+ * An alert is a different route to the same six fields, so it opens from the
+ * sheet that owns them rather than being its own destination: the parse comes
+ * back as a filled-in draft here, where it can be corrected before it is
+ * saved. Not offered while editing - an existing transaction already has its
+ * numbers, and overwriting them from a message is not what the button reads as.
+ */
+function headRow() {
+  if (store.ui.entryId) return typeTabs();
+
+  return el('div', { class: 'flex items-center gap-2.5' }, [
+    el('div', { class: 'flex-1 min-w-0' }, [typeTabs()]),
+    el('div', {
+      // Lime, and the same message glyph the Activity screen's SMS button
+      // carries - one treatment for one idea, wherever it is reached from.
+      class: 'flex-none w-[38px] h-[38px] rounded-full bg-accent text-accent-ink '
+        + 'flex items-center justify-center ' + TAP,
+      dataset: { testid: 'smsbtn' },
+      onClick: () => store.set({ sheet: 'sms', smsReturn: 'add', parse: null })
+    }, [icon('message', 17, { weight: 1.8 })])
+  ]);
+}
+
 /** Edit mode gets a title and a delete button; a new entry needs neither. */
 function editHead() {
   if (!store.ui.entryId) return null;
@@ -459,7 +484,7 @@ export function renderAddSheet() {
   }
 
   return el('div', { class: SHEET + ' max-h-[96%]' }, [
-    el('div', { class: SHEET_HEAD }, [editHead(), typeTabs()].filter(Boolean)),
+    el('div', { class: SHEET_HEAD }, [editHead(), headRow()].filter(Boolean)),
     body,
     foot
   ]);

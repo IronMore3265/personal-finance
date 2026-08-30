@@ -90,6 +90,9 @@ const STATES = [
   ['sms-sheet', async ({ app, page }) => {
     await app.goto('txns');
     await page.locator('[data-testid="roundbtn"]').first().click();
+  }],
+  ['fab-menu', async ({ page }) => {
+    await page.locator('[data-testid="fab"]').click();
   }]
 ];
 

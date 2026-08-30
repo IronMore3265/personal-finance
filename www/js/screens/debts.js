@@ -69,22 +69,7 @@ function addRow() {
   return el('div', {
     class: ROW_TAP,
     dataset: { testid: 'row' },
-    onClick: () => store.set({
-      sheet: 'debt',
-      editDebt: {
-        id: 'd' + Date.now(),
-        person: '',
-        direction: 'owed_to_me',
-        principal: 0,
-        currency: 'BDT',
-        account: store.db.accounts[0].id,
-        opened: store.today,
-        due: '',
-        note: '',
-        settled: 0,
-        isNew: true
-      }
-    })
+    onClick: () => store.set({ sheet: 'debt', editDebt: store.newDebt() })
   }, [
     el('div', {
       class: 'flex-none w-9 h-9 rounded-chip flex items-center justify-center font-ui '

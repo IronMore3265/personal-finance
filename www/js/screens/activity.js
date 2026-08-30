@@ -41,7 +41,7 @@ function searchRow() {
       class: 'flex-none w-[46px] h-[46px] rounded-full bg-accent text-accent-ink '
         + 'flex items-center justify-center ' + TAP,
       dataset: { testid: 'roundbtn' },
-      onClick: () => store.set({ sheet: 'sms', parse: null })
+      onClick: () => store.set({ sheet: 'sms', smsReturn: null, parse: null })
     }, [icon('message', 19)])
   ]);
 }

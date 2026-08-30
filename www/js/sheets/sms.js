@@ -1,12 +1,19 @@
 // SMS parser sheet. Paste, run the rule table, review what it extracted, save.
 // The review step is deliberate - a rule that guesses wrong should be visible
 // before it becomes a transaction.
+//
+// Two ways out, depending on how it was opened. Reached on its own - from
+// Settings or from Activity - it writes the transaction itself. Reached from
+// the add sheet (`ui.smsReturn`), it hands the parse back as a filled-in draft
+// instead, so the category, the date and the note can be corrected on the way
+// through. Same parse either way; only the destination differs.
 
 import { el } from '../core/dom.js';
 import { fmt } from '../core/format.js';
 import { store } from '../core/store.js';
 import { parseSms } from '../core/sms.js';
 import { icon } from '../ui/icons.js';
+import { dateLabel } from '../ui/datepicker.js';
 import { fieldLabel } from '../ui/components.js';
 import { SAMPLES } from '../data/seed.js';
 import {
@@ -36,18 +43,41 @@ async function confirm() {
     source: 'sms'
   });
 
-  store.set({ sheet: null, smsText: '', smsSender: null, parse: null, screen: 'txns' });
+  store.set({
+    sheet: null, smsText: '', smsSender: null, smsReturn: null, parse: null, screen: 'txns'
+  });
   store.say('Saved from SMS · ' + fmt(p.amount, 'BDT'));
 }
 
+/**
+ * Hand the parse back to the add sheet rather than saving it.
+ *
+ * Nothing is written here. The rule table knows the amount, the account and a
+ * likely category; it does not know the date, and it is only guessing at the
+ * category - so the draft goes back in front of the user with the keypad and
+ * the category grid still available.
+ */
+function useInDraft() {
+  const p = store.ui.parse;
+  if (!p || !p.ok) return;
+
+  store.set(store.entryFromSms(p, {
+    sheet: 'add', smsReturn: null, smsText: '', smsSender: null, parse: null
+  }));
+  store.say('Filled from SMS · check and save');
+}
+
 function matchBlock(p) {
+  const toDraft = store.ui.smsReturn === 'add';
   const fields = [
     ['Amount', fmt(p.amount, 'BDT')],
     ['Type', p.rule.type],
     ['Account', (store.acct(p.rule.account) || {}).name],
     ['Category', (store.cat(p.cat) || {}).name],
     ['Merchant', p.merchant || '—'],
-    ['Date', '28 Aug 2026']
+    // The rule table captures an amount, not a timestamp - so this is today,
+    // which is also what both exits file the transaction under.
+    ['Date', dateLabel(store.today)]
   ];
 
   return el('div', { class: 'mt-[18px] [animation:popIn_var(--dur-pop)_ease]' }, [
@@ -80,14 +110,16 @@ function matchBlock(p) {
     el('div', {
       class: 'mt-4 text-center p-[15px] bg-accent rounded-pill text-accent-ink '
         + 'font-ui font-bold text-[11.5px] tracking-[.14em] uppercase normal-nums ' + TAP,
-      text: 'Confirm & save',
-      onClick: confirm
+      dataset: { testid: 'sms-confirm' },
+      text: toDraft ? 'Use in this entry' : 'Confirm & save',
+      onClick: toDraft ? useInDraft : confirm
     })
   ]);
 }
 
 export function renderSmsSheet() {
   const p = store.ui.parse;
+  const toDraft = store.ui.smsReturn === 'add';
 
   const body = el('div', {
     // Spelled out rather than SHEET_BODY plus overrides: two padding utilities
@@ -145,11 +177,17 @@ export function renderSmsSheet() {
     el('div', { class: 'flex-none pt-[18px] px-[22px] pb-1 flex items-start gap-3' }, [
       el('div', { class: SHEET_ICON }, [icon('message', 18, { weight: 1.8 })]),
       el('div', { style: { flex: '1' } }, [
-        el('div', { class: SHEET_TITLE, text: 'Parse an SMS' }),
+        el('div', {
+          class: SHEET_TITLE,
+          text: toDraft ? 'Fill from an SMS' : 'Parse an SMS'
+        }),
         el('div', {
           class: SHEET_LEDE,
-          text: 'Paste a bank or mobile-banking alert. Matched against the rule ' +
-            'table — nothing leaves the device.'
+          text: toDraft
+            ? 'Paste a bank or mobile-banking alert. What it finds goes back '
+              + 'into the entry for you to check — nothing leaves the device.'
+            : 'Paste a bank or mobile-banking alert. Matched against the rule '
+              + 'table — nothing leaves the device.'
         })
       ])
     ]),
@@ -159,8 +197,10 @@ export function renderSmsSheet() {
         class: 'text-center p-[13px] font-ui font-bold text-[11.5px] '
           + 'tracking-[.14em] uppercase text-ink3 normal-nums ' + TAP,
         dataset: { testid: 'closebtn' },
-        text: 'Close',
-        onClick: () => store.set({ sheet: null })
+        // Opened from the add sheet, this is a step in that flow rather than a
+        // sheet of its own, so leaving it goes back to the draft it left.
+        text: toDraft ? 'Back to entry' : 'Close',
+        onClick: () => store.set({ sheet: toDraft ? 'add' : null, smsReturn: null })
       })
     ])
   ]);

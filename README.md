@@ -31,6 +31,9 @@ v4 is a re-cut of the same app, not new features:
   bar canvas and a range strip, and it is reached from the Home card rather than
   from the bar. The bar has four icon-only items and the lime FAB floats clear
   of it instead of being notched into it.
+- **The FAB fans out.** Three different things get logged in this app and they
+  are three different editors, so the + opens a menu of them - log transaction,
+  scheduled expense, debt / receivable - rather than being a shortcut to one.
 
 ## Running it
 
@@ -160,7 +163,8 @@ any date · tap any transaction to edit or delete it · pick accounts from
 type-grouped chips rather than one long strip · give categories and accounts
 their own icon and colour · track money lent and owed · run subscriptions that
 post themselves, or wait for a tap, or ask for the amount · mark one due with
-the lime tick · contribute to a goal · paste an SMS and run the rule table ·
+the lime tick · contribute to a goal · paste an SMS and run the rule table,
+either straight into the ledger or as a draft the add sheet hands you to check ·
 filter and search activity · swipe sideways between tabs and between the
 activity filters · export CSV · back up the database · flip light/dark.
 

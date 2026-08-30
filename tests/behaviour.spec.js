@@ -955,6 +955,135 @@ test.describe('activity filters', () => {
   });
 });
 
+/* ---------------- the + menu ---------------- */
+
+test.describe('the + menu', () => {
+  test('the FAB fans out into the three things that get logged', async ({ app, page }) => {
+    await app.open();
+    await expect(page.locator('[data-testid="fab-menu"]')).toHaveCount(0);
+
+    await page.locator('[data-testid="fab"]').click();
+    await expect(page.locator('[data-testid="fab-item"]')).toHaveText([
+      'Log transaction', 'Scheduled expense', 'Debt / receivable'
+    ]);
+  });
+
+  test('each entry opens its own editor', async ({ app, page }) => {
+    await app.open();
+
+    for (const [label, sheet] of [
+      ['Log transaction', 'add'],
+      ['Scheduled expense', 'recurring'],
+      ['Debt / receivable', 'debt']
+    ]) {
+      await page.locator('[data-testid="fab"]').click();
+      await app.fabMenu(label);
+      await expect(page.locator('[data-sheet="' + sheet + '"]')).toBeVisible();
+      await app.dismiss();
+    }
+  });
+
+  test('a tap outside puts the menu away without opening anything', async ({ app, page }) => {
+    await app.open();
+    await page.locator('[data-testid="fab"]').click();
+    await page.locator('[data-testid="fab-scrim"]').click({ position: { x: 20, y: 20 } });
+
+    await expect(page.locator('[data-testid="fab-menu"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="sheet"]')).toHaveCount(0);
+  });
+
+  test('the scheduled and debt editors open blank, not on the last row', async ({ app, page }) => {
+    await app.open();
+    await app.goto('scheduled');
+    await page.locator('[data-testid="row"]', { hasText: 'Netflix' }).first().click();
+    await app.dismiss();
+
+    await page.locator('[data-testid="fab"]').click();
+    await app.fabMenu('Scheduled expense');
+    expect(await page.evaluate(() => window.__paisa.ui.editRecurring.name)).toBe('');
+  });
+});
+
+/* ---------------- SMS into a draft ---------------- */
+
+test.describe('filling an entry from an SMS', () => {
+  test('the parse lands in the add sheet rather than saving itself',
+    async ({ app, page }) => {
+      await app.open();
+      const before = await page.locator('[data-testid="row"]').count();
+
+      await app.openAddSheet();
+      await page.locator('[data-testid="smsbtn"]').click();
+      await expect(page.locator('[data-sheet="sms"]')).toBeVisible();
+
+      // "Tk 849.00 paid to GRAMEENPHONE" - Rocket's bill-pay rule, and a
+      // merchant keyword that beats the rule's own default category.
+      await page.locator('[data-testid="sheet-body"]').getByText('Rocket bill').click();
+      await page.locator('[data-testid="sheet-body"]').getByText('Run parser').click();
+      await page.locator('[data-testid="sms-confirm"]').click();
+
+      // Back on the draft, filled in - and nothing written yet.
+      await expect(page.locator('[data-sheet="add"]')).toBeVisible();
+      await expect(page.locator('[data-testid="amount-val"]')).toHaveText('849');
+      await expect(page.locator('[data-testid="savebtn"]')).toContainText('849');
+
+      const ui = await page.evaluate(() => window.__paisa.ui);
+      expect(ui.entryAccount).toBe('a5');
+      expect(ui.entryCat).toBe('c5');
+      expect(ui.entrySource).toBe('sms');
+      expect(ui.entryNote).toBe('grameenphone');
+
+      await app.goto('txns');
+      expect(await page.locator('[data-testid="row"]').count()).toBe(before);
+    });
+
+  test('the filled draft saves as a normal transaction', async ({ app, page }) => {
+    await app.open();
+    await app.openAddSheet();
+    await page.locator('[data-testid="smsbtn"]').click();
+    await page.locator('[data-testid="sheet-body"]').getByText('Rocket bill').click();
+    await page.locator('[data-testid="sheet-body"]').getByText('Run parser').click();
+    await page.locator('[data-testid="sms-confirm"]').click();
+    await page.locator('[data-testid="savebtn"]').click();
+
+    const db = await app.db();
+    const saved = db.txns.find(t => t.source === 'sms');
+    expect(saved.amount).toBe(849);
+    expect(saved.account).toBe('a5');
+    expect(saved.date).toBe(CLOCK.slice(0, 10));
+  });
+
+  test('backing out returns to the draft, not to nothing', async ({ app, page }) => {
+    await app.open();
+    await app.openAddSheet();
+    await app.pickAccount('Cash wallet');
+    await page.locator('[data-testid="catchip"]', { hasText: 'Groceries' }).click();
+    await app.keys(['4', '2', '0']);
+
+    await page.locator('[data-testid="smsbtn"]').click();
+    await page.locator('[data-testid="closebtn"]').click();
+
+    await expect(page.locator('[data-sheet="add"]')).toBeVisible();
+    await expect(page.locator('[data-testid="amount-val"]')).toHaveText('420');
+  });
+
+  test('reached on its own the parser still writes the transaction itself',
+    async ({ app, page }) => {
+      await app.open();
+      await app.goto('txns');
+      await page.locator('[data-testid="roundbtn"]').first().click();
+
+      await page.locator('[data-testid="sheet-body"]').getByText('Rocket bill').click();
+      await page.locator('[data-testid="sheet-body"]').getByText('Run parser').click();
+      await expect(page.locator('[data-testid="sms-confirm"]')).toHaveText('Confirm & save');
+      await page.locator('[data-testid="sms-confirm"]').click();
+
+      await expect(page.locator('[data-testid="sheet"]')).toHaveCount(0);
+      const db = await app.db();
+      expect(db.txns.find(t => t.source === 'sms').amount).toBe(849);
+    });
+});
+
 /** A pristine seeded database, read from a throwaway app load. */
 async function freshDb(page) {
   await page.goto('/');

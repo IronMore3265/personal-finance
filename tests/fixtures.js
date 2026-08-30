@@ -62,8 +62,19 @@ export const test = base.extend({
         return page.evaluate(s => window.__paisa.go(s), screen);
       },
 
-      openAddSheet() {
-        return page.locator('[data-testid="fab"]').click();
+      /**
+       * The FAB opens a menu now, not the add sheet - so reaching a draft is
+       * two taps, and every test that used to go straight there goes through
+       * here.
+       */
+      async openAddSheet() {
+        await page.locator('[data-testid="fab"]').click();
+        await app.fabMenu('Log transaction');
+      },
+
+      /** Pick one entry out of the open + menu. */
+      fabMenu(label) {
+        return page.locator('[data-testid="fab-item"]', { hasText: label }).click();
       },
 
       /**
@@ -96,7 +107,7 @@ export const test = base.extend({
        * button needs this rather than the bare sheet.
        */
       async openFilledSheet(account = 'Cash wallet', category = 'Groceries') {
-        await page.locator('[data-testid="fab"]').click();
+        await app.openAddSheet();
         await app.pickAccount(account);
         if (category) await page.locator('[data-testid="catchip"]', { hasText: category }).click();
       },

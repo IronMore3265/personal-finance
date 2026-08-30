@@ -54,23 +54,7 @@ export function renderScheduled() {
   out.push(el('div', {
     class: ROW_TAP,
     dataset: { testid: 'row' },
-    onClick: () => store.set({
-      sheet: 'recurring',
-      editRecurring: {
-        id: 'rb' + Date.now(),
-        name: '',
-        amount: 0,
-        account: store.db.accounts[0].id,
-        cat: (store.db.categories.find(c => c.type === 'expense') || store.db.categories[0]).id,
-        freq: 'monthly',
-        due: store.today,
-        nextDue: store.today,
-        autoPost: 0,
-        active: 1,
-        variable: 0,
-        isNew: true
-      }
-    })
+    onClick: () => store.set({ sheet: 'recurring', editRecurring: store.newRecurring() })
   }, [
     el('div', {
       class: 'flex-none w-9 h-9 rounded-chip flex items-center justify-center font-ui '
