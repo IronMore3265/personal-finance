@@ -395,6 +395,7 @@ class WebDriver {
     d.items = d.items || {};
     d.debts = d.debts || [];
     d.debtPayments = d.debtPayments || [];
+    d.rules = d.rules || [];
     (d.bills || []).forEach(b => {
       if (b.nextDue === undefined) b.nextDue = b.due;
       if (b.autoPost === undefined) b.autoPost = 0;

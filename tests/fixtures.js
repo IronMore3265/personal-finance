@@ -62,8 +62,40 @@ export const test = base.extend({
         return page.evaluate(s => window.__paisa.go(s), screen);
       },
 
-      openAddSheet() {
-        return page.locator('[data-testid="fab"]').click();
+      /**
+       * The FAB opens a menu now, not the add sheet - so reaching a draft is
+       * two taps, and every test that used to go straight there goes through
+       * here.
+       */
+      async openAddSheet() {
+        await page.locator('[data-testid="fab"]').click();
+        await app.fabMenu('Log transaction');
+      },
+
+      /** Pick one entry out of the open + menu. */
+      fabMenu(label) {
+        return page.locator('[data-testid="fab-item"]', { hasText: label }).click();
+      },
+
+      /**
+       * Drag the screen body sideways.
+       *
+       * `dir` is the direction of travel through the tabs, not of the finger:
+       * 1 moves the finger left to reach the next tab, -1 right for the
+       * previous one. Stepped rather than jumped so the gesture passes the
+       * axis test the way a real finger does.
+       */
+      async swipe(dir) {
+        const box = await page.locator('#scroll').boundingBox();
+        // Below the search box and the chip row, which own their own gestures.
+        const y = box.y + Math.min(box.height - 20, 260);
+        const x = box.x + box.width / 2;
+        await page.mouse.move(x, y);
+        await page.mouse.down();
+        for (let step = 1; step <= 8; step++) {
+          await page.mouse.move(x - dir * 20 * step, y);
+        }
+        await page.mouse.up();
       },
 
       /**
@@ -75,7 +107,7 @@ export const test = base.extend({
        * button needs this rather than the bare sheet.
        */
       async openFilledSheet(account = 'Cash wallet', category = 'Groceries') {
-        await page.locator('[data-testid="fab"]').click();
+        await app.openAddSheet();
         await app.pickAccount(account);
         if (category) await page.locator('[data-testid="catchip"]', { hasText: category }).click();
       },

@@ -183,7 +183,7 @@ function smsCapture() {
       title: 'Paste an SMS',
       sub: 'Runs the rule table locally — no permission needed',
       trailing: chevron(),
-      onClick: () => store.set({ sheet: 'sms', parse: null })
+      onClick: () => store.set({ sheet: 'sms', smsReturn: null, parse: null })
     }),
     live,
     rules

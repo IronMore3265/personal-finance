@@ -121,6 +121,19 @@ export const DDL = [
 
   `CREATE INDEX IF NOT EXISTS idx_pay_debt ON debt_payments (debt);`,
 
+  `CREATE TABLE IF NOT EXISTS rules (
+     id      TEXT PRIMARY KEY NOT NULL,
+     sender  TEXT NOT NULL,
+     pattern TEXT NOT NULL,
+     type    TEXT NOT NULL,
+     account TEXT NOT NULL,
+     cat     TEXT NOT NULL,
+     label   TEXT,
+     sort    INTEGER NOT NULL DEFAULT 0,
+     FOREIGN KEY (account) REFERENCES accounts (id),
+     FOREIGN KEY (cat)     REFERENCES categories (id)
+   );`,
+
   `CREATE TABLE IF NOT EXISTS settings (
      key   TEXT PRIMARY KEY NOT NULL,
      value TEXT
@@ -195,6 +208,17 @@ export const MIGRATIONS = {
   ],
 
   3: [
+    `CREATE TABLE IF NOT EXISTS rules (
+       id      TEXT PRIMARY KEY NOT NULL,
+       sender  TEXT NOT NULL,
+       pattern TEXT NOT NULL,
+       type    TEXT NOT NULL,
+       account TEXT NOT NULL,
+       cat     TEXT NOT NULL,
+       label   TEXT,
+       sort    INTEGER NOT NULL DEFAULT 0
+     );`,
+
     `CREATE TABLE IF NOT EXISTS outbox (
        seq     INTEGER PRIMARY KEY AUTOINCREMENT,
        tbl     TEXT NOT NULL,

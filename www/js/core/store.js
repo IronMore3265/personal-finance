@@ -16,6 +16,15 @@ const SCREEN_ORDER = [
   'categories', 'accounts', 'scheduled'
 ];
 
+/**
+ * Activity's filter chips, in the order the strip draws them.
+ *
+ * That order is also the one a sideways swipe walks, so it lives here beside
+ * SCREEN_ORDER rather than in the screen - both are navigation, and both are
+ * read by the shell as well as by the screen that draws them.
+ */
+export const FILTERS = ['all', 'expense', 'income', 'sms'];
+
 // Reports range strip. `All` is resolved from the oldest transaction on hand.
 const RANGE_DAYS = { '1w': 7, '1m': 30, '3m': 90, '6m': 180, '1y': 365, '2y': 730 };
 
@@ -70,6 +79,7 @@ const KEY_REGIONS = {
 
   toast: ['toast'],
   sheet: ['sheet'],
+  fabMenu: ['nav'],
 
   // The keypad is the hottest control in the app. These three drive only the
   // amount line and the save button, which the shell patches in place.
@@ -108,9 +118,11 @@ const KEY_REGIONS = {
   iconGroup: ['sheet'],
   smsText: ['sheet'],
   smsSender: ['sheet'],
+  smsReturn: ['sheet'],
   parse: ['sheet'],
 
   filter: ['body'],
+  filterDir: ['body'],
   query: ['body'],
   range: ['body'],
   reportTab: ['body'],
@@ -137,8 +149,10 @@ class Store {
       reportTab: 'overview',
       range: 'All',
       filter: 'all',
+      filterDir: 1,       // which way the ledger pushes when the filter changes
       query: '',
       sheet: null,
+      fabMenu: false,        // the + menu, fanned out above the FAB
 
       entryId: null,          // set = editing an existing transaction
       entryType: 'expense',
@@ -178,6 +192,7 @@ class Store {
 
       smsText: '',
       smsSender: null,
+      smsReturn: null,       // sheet to go back to; set = fill a draft, not save
       parse: null,
       smsLive: false,
       toast: null
@@ -506,11 +521,29 @@ class Store {
 
   /* ---------------- navigation ---------------- */
 
-  go(screen) {
+  /**
+   * @param {string} screen
+   * @param {object} [extra] state to land on together with the screen, in one
+   *   pass - a swipe into Activity picks the filter it arrives on, and two
+   *   `set` calls would render the screen twice.
+   */
+  go(screen, extra) {
     if (screen === this.ui.screen) return;
     const from = SCREEN_ORDER.indexOf(this.ui.screen);
     const to = SCREEN_ORDER.indexOf(screen);
-    this.set({ screen, direction: to >= from ? 1 : -1 });
+    this.set({ ...extra, screen, direction: to >= from ? 1 : -1, fabMenu: false });
+  }
+
+  /**
+   * Activity's filter chips are tabs within the screen, so crossing one is a
+   * move with a direction rather than a plain state change: the ledger pushes
+   * across the way the whole body does when you cross a tab.
+   */
+  setFilter(filter, dir) {
+    if (filter === this.ui.filter) return;
+    const from = FILTERS.indexOf(this.ui.filter);
+    const to = FILTERS.indexOf(filter);
+    this.set({ filter, filterDir: dir || (to >= from ? 1 : -1) });
   }
 
   say(msg) {
@@ -578,6 +611,32 @@ class Store {
       confirmDelete: false,
       ...patch
     };
+  }
+
+  /**
+   * A draft filled in from a parsed SMS, for the add sheet to review.
+   *
+   * The rule that matched names the account and the type; the message itself
+   * gives the amount and, through its merchant, a likely category. It is right
+   * about them far more often than not - and "far more often than not" is
+   * exactly why this returns a draft rather than a saved row. The date is the
+   * one thing the table cannot tell us at all, so it stays on today, in front
+   * of the user, on a row that opens the wheel.
+   *
+   * Sibling of resetEntry: same shape, same job of putting the panels away.
+   */
+  entryFromSms(p, patch) {
+    return this.resetEntry({
+      entryType: p.rule.type,
+      entryAccount: p.rule.account,
+      entryCat: p.cat,
+      entryCurrency: 'BDT',
+      entryAmount: calc.trim(p.amount),
+      entryValue: p.amount,
+      entryNote: p.merchant ? p.merchant.replace(/\s+/g, ' ').toLowerCase() : p.rule.label,
+      entrySource: 'sms',
+      ...patch
+    });
   }
 
   /** Value the sheet would save: the line items if there are any, else the keypad. */
@@ -765,6 +824,29 @@ class Store {
     return { owedToMe, iOwe, net: owedToMe - iOwe };
   }
 
+  /**
+   * A blank debt, ready for the debt sheet.
+   *
+   * Lives here rather than at either call site: the Debts screen and the +
+   * menu both open the same editor, and a payload that drifted between them
+   * would be two different "new debt" shapes.
+   */
+  newDebt() {
+    return {
+      id: 'd' + Date.now(),
+      person: '',
+      direction: 'owed_to_me',
+      principal: 0,
+      currency: 'BDT',
+      account: this.db.accounts[0].id,
+      opened: this.today,
+      due: '',
+      note: '',
+      settled: 0,
+      isNew: true
+    };
+  }
+
   async saveDebt(d) {
     const existing = this.db.debts.find(x => x.id === d.id);
     await repo.saveDebt(d);
@@ -840,6 +922,24 @@ class Store {
   }
 
   isOverdue(b) { return (b.nextDue || b.due) <= this.today; }
+
+  /** A blank recurring rule, shared by the Scheduled screen and the + menu. */
+  newRecurring() {
+    return {
+      id: 'rb' + Date.now(),
+      name: '',
+      amount: 0,
+      account: this.db.accounts[0].id,
+      cat: (this.db.categories.find(c => c.type === 'expense') || this.db.categories[0]).id,
+      freq: 'monthly',
+      due: this.today,
+      nextDue: this.today,
+      autoPost: 0,
+      active: 1,
+      variable: 0,
+      isNew: true
+    };
+  }
 
   /**
    * Post one occurrence of a rule and move it on to the next.

@@ -56,6 +56,8 @@ Manrope only. Tabular numerals on every amount.
 - **Range chips** — pill row, active is `--ink` fill (Reports).
 - **Bar canvas** — thin rounded bars, 3px gap, lime/green/grey.
 - **Bottom bar** — 4 stroke icons, no labels, active = ink icon + lime dot; lime FAB (+) floats above it.
+  The + fans out into three labelled pills (log transaction / scheduled expense / debt / receivable)
+  over a scrim, growing upward from the button; the + rotates 45° into a ×.
 
 ## Screens
 Home · Activity · Budgets/Goals · Reports (Overview / Categories / Accounts / Months) · Settings. Sheets: add transaction (numpad), SMS parser.
