@@ -9,6 +9,7 @@
 
 import { repo } from '../data/repo.js';
 import { sync } from '../data/sync.js';
+import * as lock from './lock.js';
 import { RATES, TYPE_LABEL } from '../data/seed.js';
 import * as calc from './calc.js';
 
@@ -91,6 +92,11 @@ const KEY_REGIONS = {
   entryExpr: ['amount'],
   entryValue: ['amount'],
 
+  // Who the keypad buffer currently belongs to, and the drafts the two other
+  // sheets that borrow it are editing.
+  padTarget: ['sheet'],
+  goalAdd: ['sheet'],
+
   entryType: ['sheet'],
   entryCat: ['sheet'],
   entryCatOpen: ['sheet'],
@@ -125,6 +131,26 @@ const KEY_REGIONS = {
   smsReturn: ['sheet'],
   parse: ['sheet'],
 
+  // The lock and the sign-in gate are drawn over the whole shell rather than
+  // inside it, so they are ALL: the pass that raises or drops one has to
+  // repaint the chrome it is covering as well as the body underneath.
+  locked: ALL,
+  authGate: ALL,
+  appLock: ['body', 'sheet'],
+  lockAvailable: ['body'],
+  authRemember: ['sheet'],
+  authBusy: ['sheet'],
+  authError: ['sheet'],
+  authStep: ['sheet'],
+  authEmail: ['sheet'],
+  authPassword: ['sheet'],
+
+  // Money is read through the store everywhere, so a change of home currency
+  // or of the rate behind it moves every number on the screen.
+  homeCurrency: ALL,
+  fxRate: ALL,
+  fxRateDraft: ['sheet'],
+
   filter: ['body'],
   filterDir: ['body'],
   query: ['body'],
@@ -155,6 +181,32 @@ class Store {
       range: 'All',
       filter: 'all',
       filterDir: 1,       // which way the ledger pushes when the filter changes
+
+      // The app lock. `appLock` is the setting and persists; `locked` is the
+      // state of this run and deliberately does not - a lock that survived a
+      // crash as "unlocked" would be no lock at all.
+      appLock: false,
+      locked: false,
+      // Whether this device can be asked at all. Read once at boot, because
+      // nothing but enrolling a finger in system settings changes it, and the
+      // Settings row has to know before it draws a switch.
+      lockAvailable: false,
+      // The sign-in gate: null once it has been dealt with, either way.
+      authGate: false,
+      authStep: 'signin',   // 'signin' | 'signup' | 'reset'
+      authRemember: true,   // remember the email, never the password
+      authEmail: '',
+      authPassword: '',     // never persisted, cleared the moment it is spent
+      authBusy: false,
+      authError: null,
+
+      // Home currency, and the rate the other one converts at. Both persist;
+      // fxAt is when the rate was last fetched, so the UI can say how old it is.
+      homeCurrency: 'BDT',
+      fxRate: 0,            // 0 = nothing fetched yet, fall back to seed RATES
+      fxAt: null,
+      fxManual: false,      // a rate typed by hand wins until the next fetch
+      fxRateDraft: '',      // what is in the rate field, before it is accepted
       query: '',
       sheet: null,
       fabMenu: false,        // the + menu, fanned out above the FAB
@@ -169,6 +221,9 @@ class Store {
       entryCat: null,
       entryCatOpen: false,    // category grid expanded, or folded to the choice
       keypadOpen: false,      // the keys are only up while a number is entered
+      // Which draft the keypad buffer is feeding: null is this sheet's own
+      // amount, the rest are the sheets that borrow the same three fields.
+      padTarget: null,        // null | 'recurring' | 'debt' | 'goal'
       dateOpen: false,        // the date wheel is over the sheet
       entryCurrency: 'BDT',
       entryRate: '122',
@@ -181,6 +236,7 @@ class Store {
 
       editEntity: null,       // category / account editor payload
       editDebt: null,
+      goalAdd: null,          // { id, name, amount } while the goal sheet is up
       recGroup: null,       // expanded account group in the recurring sheet
       recCatOpen: false,    // its category grid expanded, or folded
       recDateOpen: false,   // the recurring sheet's date panel
@@ -224,7 +280,19 @@ class Store {
     else this.ui.dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     if (stored.smsLive !== undefined) this.ui.smsLive = stored.smsLive === 'true';
     if (stored.includeDebt !== undefined) this.ui.includeDebt = stored.includeDebt === 'true';
+    if (stored.appLock !== undefined) this.ui.appLock = stored.appLock === 'true';
+    if (stored.homeCurrency && RATES[stored.homeCurrency]) {
+      this.ui.homeCurrency = stored.homeCurrency;
+    }
+    if (stored.fxRate) this.ui.fxRate = Number(stored.fxRate) || 0;
+    if (stored.fxAt) this.ui.fxAt = stored.fxAt;
+    if (stored.fxManual !== undefined) this.ui.fxManual = stored.fxManual === 'true';
+    // The draft starts in the currency the user reads totals in. It is set
+    // here rather than in the defaults above because it follows a setting that
+    // has only just been read.
+    this.ui.entryCurrency = this.ui.homeCurrency;
     this.ui.entryDate = this.today;
+    this.ui.lockAvailable = await lock.available();
     this.applyTheme();
     await this.catchUpRecurring();
     this.wireSync();
@@ -324,6 +392,22 @@ class Store {
   /** Line items of a transaction, or an empty list. */
   itemsFor(id) { return this.db.items[id] || []; }
 
+  /** The currency every total is reported in. */
+  get homeCurrency() { return this.ui.homeCurrency; }
+
+  /**
+   * How many BDT one unit of each currency is worth.
+   *
+   * `seed.RATES` is the offline floor - it is what a first run has before
+   * anything has been fetched, and what a device with no signal keeps using.
+   * A fetched or hand-entered rate overlays it. Everything is quoted against
+   * BDT because that is the base the seed data is written in; which currency
+   * the user reads totals in is a separate question, answered by homeVal.
+   */
+  get rates() {
+    return this.ui.fxRate > 0 ? { ...RATES, USD: this.ui.fxRate } : RATES;
+  }
+
   /** Transaction amount in the currency of its own account. */
   conv(t) {
     const a = this.acct(t.account);
@@ -331,10 +415,31 @@ class Store {
     return t.currency === a.currency ? t.amount : t.amount * (t.rate || 1);
   }
 
-  /** Transaction amount in the home currency (BDT). */
+  /**
+   * Transaction amount in the home currency.
+   *
+   * Two steps, not one: into BDT because that is what the rate table is quoted
+   * in, then out of BDT into whatever the user is reading. With BDT at home
+   * the second step is a division by one and this is what it always was.
+   */
   homeVal(t) {
     const a = this.acct(t.account);
-    return this.conv(t) * (RATES[a ? a.currency : 'BDT'] || 1);
+    const rates = this.rates;
+    const from = rates[a ? a.currency : 'BDT'] || 1;
+    const to = rates[this.ui.homeCurrency] || 1;
+    return this.conv(t) * (from / to);
+  }
+
+  /**
+   * A plain amount in `currency`, read in the home currency.
+   *
+   * Every total the app shows goes through this or through homeVal - there is
+   * no other place a conversion happens, which is what makes changing the home
+   * currency a one-line change rather than a hunt.
+   */
+  toHome(amount, currency) {
+    const rates = this.rates;
+    return amount * ((rates[currency] || 1) / (rates[this.ui.homeCurrency] || 1));
   }
 
   balance(id) { return this.balanceAsOf(id, this.today); }
@@ -379,7 +484,7 @@ class Store {
     if (this._worth) return this._worth;
     let net = 0, gross = 0;
     for (const a of this.db.accounts) {
-      const home = this.balance(a.id) * (RATES[a.currency] || 1);
+      const home = this.toHome(this.balance(a.id), a.currency);
       net += home;
       gross += Math.abs(home);
     }
@@ -479,7 +584,7 @@ class Store {
     const gross = this.grossWorth();
     return this.db.accounts.map(a => {
       const b = this.balance(a.id);
-      const home = b * (RATES[a.currency] || 1);
+      const home = this.toHome(b, a.currency);
       return {
         id: a.id,
         name: a.name,
@@ -499,9 +604,19 @@ class Store {
     });
   }
 
-  /** Activity list after the filter chips and the search box. */
-  filteredTxns() {
-    const { filter, query } = this.ui;
+/**
+   * Activity list after the filter chips and the search box.
+   *
+   * The filter is an argument rather than only a field so the shell can draw a
+   * chip it is merely passing through on its way to the one that was tapped,
+   * without putting the app into that state to do it. The search text is not
+   * an argument: it is not something the slide travels through, and it applies
+   * to every pane of it.
+   *
+   * @param {string} [filter] defaults to the chip actually selected
+   */
+  filteredTxns(filter = this.ui.filter) {
+    const { query } = this.ui;
     let list = this.db.txns.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
 
     if (filter !== 'all') {
@@ -555,8 +670,9 @@ class Store {
 
   /**
    * Activity's filter chips are tabs within the screen, so crossing one is a
-   * move with a direction rather than a plain state change: the ledger pushes
-   * across the way the whole body does when you cross a tab.
+   * move with a direction rather than a plain state change: the ledger slides
+   * the way a whole screen does when you cross a tab. The direction is which
+   * way along the strip you went, which is the way the panes travel.
    */
   setFilter(filter, dir) {
     if (filter === this.ui.filter) return;
@@ -597,6 +713,7 @@ class Store {
       entryCat: t.cat,
       entryCatOpen: false,
       keypadOpen: false,
+      padTarget: null,
       dateOpen: false,
       entryCurrency: t.currency,
       entryRate: String(t.rate || 1),
@@ -626,6 +743,7 @@ class Store {
       entryCat: null,
       entryCatOpen: false,
       keypadOpen: false,
+      padTarget: null,
       dateOpen: false,
       confirmDelete: false,
       ...patch
@@ -836,7 +954,7 @@ class Store {
   debtTotals() {
     let owedToMe = 0, iOwe = 0;
     for (const d of this.openDebts()) {
-      const home = this.debtBalance(d) * (RATES[d.currency] || 1);
+      const home = this.toHome(this.debtBalance(d), d.currency);
       if (d.direction === 'owed_to_me') owedToMe += home;
       else iOwe += home;
     }
@@ -856,7 +974,7 @@ class Store {
       person: '',
       direction: 'owed_to_me',
       principal: 0,
-      currency: 'BDT',
+      currency: this.ui.homeCurrency,
       account: this.db.accounts[0].id,
       opened: this.today,
       due: '',
@@ -905,7 +1023,7 @@ class Store {
       type: debt.direction === 'owed_to_me' ? 'income' : 'expense',
       cat: this.db.categories[0].id,
       amount: value,
-      currency: debt.currency || 'BDT',
+      currency: debt.currency || this.ui.homeCurrency,
       rate: 1,
       date: this.today,
       note: (debt.direction === 'owed_to_me' ? 'Repaid by ' : 'Repaid to ') + debt.person,
@@ -977,7 +1095,10 @@ class Store {
       type: 'expense',
       cat: rule.cat,
       amount,
-      currency: 'BDT',
+      // `bills` carries no currency of its own, so the figure is in whatever
+      // the user reads totals in - which is what screens/scheduled.js shows it
+      // as, and the two have to agree.
+      currency: this.ui.homeCurrency,
       rate: 1,
       date: due,
       note: rule.name,
@@ -1037,10 +1158,20 @@ class Store {
 
   /* ---------------- goals and settings ---------------- */
 
+  /** A draft for the goal sheet: which goal, and how much so far. */
+  newGoalAdd(goal) {
+    return { id: goal.id, name: goal.name, amount: 0 };
+  }
+
   async addToGoal(goal, amount) {
     const next = Math.min(goal.target, goal.current + amount);
     await repo.setGoal(goal.id, next);
     goal.current = next;
+    // Every other mutator announces itself; this one used to repaint only as a
+    // side effect of say() setting a toast, which left the ring and the figure
+    // stale for any caller that did not also toast.
+    this.touch();
+    this.emit(['header', 'body', 'sheet']);
     this.say('Added ' + amount.toLocaleString('en-US') + ' to ' + goal.name);
   }
 
@@ -1066,11 +1197,102 @@ class Store {
     this.emit(['body']);
   }
 
+  /**
+   * Turn the app lock on or off.
+   *
+   * The caller proves the sensor works before turning it on - see the Settings
+   * row - so this only records the decision.
+   */
+  async setAppLock(on) {
+    this.ui.appLock = !!on;
+    await repo.setSetting('appLock', this.ui.appLock);
+    this.emit(['body', 'sheet']);
+  }
+
+  /* ---------------- money ---------------- */
+
+  /**
+   * Change which currency totals are reported in.
+   *
+   * Nothing in the ledger moves: every transaction keeps its own amount in its
+   * own currency, and this only changes what they are added up into.
+   */
+  async setHomeCurrency(code) {
+    if (!this.rates[code] || code === this.ui.homeCurrency) return;
+    this.ui.homeCurrency = code;
+    await repo.setSetting('homeCurrency', code);
+    this.touch();
+    this.emit(['header', 'body', 'sheet']);
+  }
+
+  /**
+   * Record an exchange rate.
+   *
+   * Records whatever it is given. Whether a fetched rate is allowed to
+   * displace one the user typed is data/fx.js's call, because that is the
+   * side that knows whether the fetch was asked for or merely happened - two
+   * guards for one rule is how they end up disagreeing.
+   */
+  async setRate(rate, manual) {
+    const value = Number(rate);
+    if (!(value > 0)) return;
+    this.ui.fxRate = value;
+    this.ui.fxAt = new Date().toISOString();
+    this.ui.fxManual = !!manual;
+    await repo.setSetting('fxRate', String(value));
+    await repo.setSetting('fxAt', this.ui.fxAt);
+    await repo.setSetting('fxManual', this.ui.fxManual);
+    this.touch();
+    this.emit(['header', 'body', 'sheet']);
+  }
+
   /* ---------------- keypad ---------------- */
 
   /**
+   * Point the keypad at a number and raise it.
+   *
+   * There is one buffer, not one per sheet: `entryExpr` / `entryAmount` /
+   * `entryValue` are the keypad's working state wherever it is up, and
+   * `padTarget` says whose number the folded result belongs to. That keeps the
+   * `amount` region, `patchAmount()` and the panel's entrance animation working
+   * for every sheet rather than only for the one they were written against.
+   *
+   * @param {string|null} target null for the add sheet's own amount, otherwise
+   *   'recurring' | 'debt' | 'goal'
+   * @param {number} [seed] the value already on the field, so the keys carry on
+   *   from it rather than starting blank
+   */
+  openPad(target, seed) {
+    this.set({
+      keypadOpen: true,
+      padTarget: target,
+      entryFocusItem: null,
+      dateOpen: false,
+      entryExpr: [],
+      entryAmount: seed ? calc.trim(seed) : '',
+      entryValue: Number(seed) || 0
+    });
+  }
+
+  /** Put the keys away and hand the buffer back to the add sheet. */
+  closePad() {
+    this.set({ keypadOpen: false, padTarget: null, entryFocusItem: null });
+  }
+
+  /** Where a folded value goes for each borrowing sheet. */
+  padWrite(value) {
+    if (this.ui.padTarget === 'recurring' && this.ui.editRecurring) {
+      this.ui.editRecurring.amount = value;
+    } else if (this.ui.padTarget === 'debt' && this.ui.editDebt) {
+      this.ui.editDebt.principal = value;
+    } else if (this.ui.padTarget === 'goal' && this.ui.goalAdd) {
+      this.ui.goalAdd.amount = value;
+    }
+  }
+
+  /**
    * One keypress. Digits and operators both land here; which number they edit
-   * depends on whether a line item has the keypad.
+   * depends on `padTarget`, and on whether a line item has the keypad.
    */
   pressKey(label) {
     const { entryExpr: expr, entryAmount: buf } = this.ui;
@@ -1089,6 +1311,14 @@ class Store {
       // over a number that is still being typed.
       entryValue: value === null ? this.ui.entryValue : value
     };
+
+    // A borrowing sheet keeps its draft in step on every keystroke, so its save
+    // button needs no separate commit step and a dismissal loses nothing.
+    if (this.ui.padTarget) {
+      this.padWrite(patch.entryValue);
+      this.set(patch);
+      return;
+    }
 
     // When a line item has the keypad, the amount belongs to that row and the
     // transaction total is the sum, so both have to move together.

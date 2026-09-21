@@ -12,8 +12,8 @@
 // left in the shell.
 
 import { el, clear, patch } from './core/dom.js';
-import { pushIn, stagger } from './core/motion.js';
-import { store, FILTERS } from './core/store.js';
+import { pushIn, stagger, slideThrough } from './core/motion.js';
+import { store } from './core/store.js';
 import * as calc from './core/calc.js';
 import { icon } from './ui/icons.js';
 import { TAP, PRESS } from './ui/styles.js';
@@ -48,7 +48,7 @@ const GRAB_ZONE = 'flex-none w-full pt-2.5 pb-1 flex justify-center [touch-actio
 const GRABBER = 'w-[38px] h-1 rounded-pill bg-line';
 
 import { renderHome } from './screens/home.js';
-import { renderActivity } from './screens/activity.js';
+import { renderActivity, renderLedger, filterChips } from './screens/activity.js';
 import { renderBudgets } from './screens/budgets.js';
 import { renderReports } from './screens/reports.js';
 import { renderSettings } from './screens/settings.js';
@@ -60,7 +60,14 @@ import { renderSmsSheet } from './sheets/sms.js';
 import { renderEntitySheet } from './sheets/entity.js';
 import { renderDebtSheet, debtDateSpec } from './sheets/debt.js';
 import { renderRecurringSheet, recurringDateSpec } from './sheets/recurring.js';
+import { renderGoalSheet } from './sheets/goal.js';
 import { renderSyncSheet } from './sheets/sync.js';
+import { renderCurrencySheet } from './sheets/currency.js';
+import {
+  renderGate, askToUnlock, isPrompting, rememberedEmail, rememberedChoice, gateSkipped
+} from './screens/signin.js';
+import { refreshRate } from './data/fx.js';
+import { supabase } from './data/supabase.js';
 
 const TITLES = {
   home: 'Dashboard',
@@ -90,7 +97,9 @@ const SHEETS = {
   entity: renderEntitySheet,
   debt: renderDebtSheet,
   recurring: renderRecurringSheet,
-  sync: renderSyncSheet
+  goal: renderGoalSheet,
+  sync: renderSyncSheet,
+  currency: renderCurrencySheet
 };
 
 /*
@@ -119,55 +128,246 @@ const NAV = [
 ];
 
 /*
- * What a sideways swipe walks.
+ * What a sideways swipe walks: the four tabs, in bar order.
  *
- * The four tabs in bar order, and - before the swipe leaves a screen at all -
- * whatever tabs that screen has of its own. Activity's filter chips are its
- * sub-tabs, so a swipe there steps All -> Expense -> Income -> From SMS and
- * only then crosses to Budgets. The screens reached from Settings are not on
- * the list: they sit a level down and have no left/right relation to anything.
+ * Only screens. Activity's filter chips used to be walked as sub-tabs before
+ * the swipe would leave the screen at all, which made the same gesture mean
+ * two different things depending on where in the strip you happened to be, and
+ * made Budgets three swipes away from Activity instead of one. The chips are
+ * tap-only now; sideways always means a different screen.
+ *
+ * The screens reached from Settings are not on the list: they sit a level down
+ * and have no left/right relation to anything.
  */
 const SWIPE_TABS = NAV.map(([id]) => id);
 
-const SUB_TABS = {
-  txns: { key: 'filter', order: FILTERS, set: (id, dir) => store.setFilter(id, dir) }
-};
-
 /** @param {number} dir 1 for the next tab (finger left), -1 for the previous. */
 function swipeTarget(dir) {
-  const screen = store.ui.screen;
-
-  const sub = SUB_TABS[screen];
-  if (sub) {
-    const next = sub.order.indexOf(store.ui[sub.key]) + dir;
-    if (next >= 0 && next < sub.order.length) return { sub, id: sub.order[next] };
-  }
-
-  const here = SWIPE_TABS.indexOf(screen);
+  const here = SWIPE_TABS.indexOf(store.ui.screen);
   if (here < 0) return null;
-  const screenNext = SWIPE_TABS[here + dir];
-  return screenNext ? { screen: screenNext } : null;
+  return SWIPE_TABS[here + dir] || null;
 }
 
 function swipe(dir) {
   const target = swipeTarget(dir);
-  if (!target) return;
-  if (target.sub) { target.sub.set(target.id, dir); return; }
-
-  // Arriving at a screen by swipe lands on the sub-tab nearest the edge it was
-  // entered from, so the next swipe the same way has somewhere to go rather
-  // than appearing to skip the screen entirely.
-  const sub = SUB_TABS[target.screen];
-  const edge = sub
-    ? { [sub.key]: dir > 0 ? sub.order[0] : sub.order[sub.order.length - 1] }
-    : null;
-  store.go(target.screen, edge);
+  if (target) store.go(target);
 }
 
 const dom = {};
 let lastScreen = null;
 let lastFilter = null;
 let lastSheet = null;
+// Set by the pager for the one render that lands a swipe. The panes have
+// already travelled by then, so that pass must not also push the new content
+// in from the side - it is a move that has finished, not one about to start.
+let arrivedBySwipe = false;
+
+/* ------------------------------------------------------------------ *
+ * Pager
+ *
+ * #peek is the screen you are on your way to. It is drawn when the gesture
+ * commits to the sideways axis, parked a full width off the edge you are
+ * pulling from, and moved with #scroll so the two read as one strip sliding
+ * under the finger.
+ *
+ * When the swipe lands, those nodes are *moved* into #scroll rather than
+ * rebuilt there. #peek has already built the whole screen and the user has
+ * already watched it travel; building it a second time and staggering it in
+ * would replay an arrival that has visibly finished. Handlers survive the move
+ * because they live on the node (see bind() in core/dom.js), so the adopted
+ * tree is live the moment it is reparented.
+ * ------------------------------------------------------------------ */
+
+let peekDir = 0;
+/* Which screen #peek currently holds, so the landing pass can be sure the
+   nodes it is about to adopt are the ones the store just navigated to. */
+let peekScreen = null;
+
+/**
+ * How far across the drag has got, 0..1. Only the chrome needs this - the panes
+ * travel in percentages (see parkedAt) so that they tile exactly.
+ */
+const pageWidth = () => dom.pager.clientWidth;
+
+/*
+ * Where #peek waits, as a transform.
+ *
+ * A percentage, not `pageWidth()` pixels. A percentage resolves against the
+ * element's own border box, so the two panes tile exactly whatever the width
+ * is; `clientWidth` is rounded to an integer, and on a display whose CSS width
+ * is fractional - 1080 physical at dpr 2.75, say - that parks the neighbour a
+ * fraction of a pixel short and opens a hairline of #pager's background
+ * between them. This device divides evenly (1080 at dpr 2.5 = 432), so that is
+ * a latent bug rather than an observed one, but it costs nothing to be exact.
+ */
+const parkedAt = (dir) => (dir > 0 ? 'translateX(100%)' : 'translateX(-100%)');
+
+function paintPeek(dir) {
+  const target = swipeTarget(dir);
+  if (!target) return;
+  peekDir = dir;
+  peekScreen = target;
+  clear(dom.peek);
+  SCREENS[target]().forEach(node => dom.peek.appendChild(node));
+  dom.peek.scrollTop = 0;
+  dom.peek.style.transition = 'none';
+  dom.peek.style.transform = parkedAt(dir);
+  dom.peek.style.visibility = 'visible';
+}
+
+function hidePeek() {
+  peekDir = 0;
+  peekScreen = null;
+  dom.peek.style.visibility = '';
+  dom.peek.style.transition = 'none';
+  dom.peek.style.transform = '';
+  clear(dom.peek);
+}
+
+/**
+ * The header title and the nav dot, a fraction of the way across.
+ *
+ * Without this the chrome tells a different story from the panes: the title
+ * still names the screen sliding out while the one sliding in is most of the
+ * way onto the display, and the dot sits under a tab you have visibly left.
+ * A drag is meant to be one continuous thing, so the bar comes with it.
+ *
+ * The title fades through rather than crossfading two stacked labels: at the
+ * midpoint a crossfade shows both names at half strength, and two centred
+ * words of different lengths overlapping reads as neither of them.
+ *
+ * @param {number} progress 0 where the drag began, 1 fully across
+ * @param {number} dir      which way, 0 to put everything back
+ */
+function trackChrome(progress, dir) {
+  const title = dom.header.querySelector('[data-role="title"]');
+  if (title) {
+    const target = dir ? swipeTarget(dir) : null;
+    title.textContent = titleFor(progress >= 0.5 && target ? target : store.ui.screen);
+    title.style.opacity = String(dir ? Math.abs(progress * 2 - 1) : 1);
+  }
+  placeNavDot(dir ? progress : 0, dir);
+}
+
+/** Let the bar finish the move at the pace the panes finish theirs. */
+function glideChrome(on) {
+  const title = dom.header.querySelector('[data-role="title"]');
+  const dot = dom.nav.querySelector('[data-role="navdot"]');
+  if (title) title.style.transition = on ? 'opacity var(--dur-short) var(--ease-enter)' : '';
+  if (dot) dot.style.transition = on ? 'left var(--dur-short) var(--ease-enter)' : '';
+}
+
+/** Back to plain state, for the render that has just written the real title. */
+function resetChrome() {
+  const title = dom.header.querySelector('[data-role="title"]');
+  if (title) { title.style.opacity = ''; title.style.transition = ''; }
+  const dot = dom.nav.querySelector('[data-role="navdot"]');
+  if (dot) dot.style.transition = '';
+  placeNavDot(0);
+}
+
+function trackPanes(offset) {
+  dom.scroll.style.transition = 'none';
+  dom.scroll.style.transform = 'translateX(' + offset.toFixed(1) + 'px)';
+  if (!peekDir) return;
+  dom.peek.style.transition = 'none';
+  dom.peek.style.transform =
+    'translateX(calc(' + (peekDir > 0 ? '100%' : '-100%')
+      + ' + ' + offset.toFixed(1) + 'px))';
+}
+
+const pager = {
+  open: paintPeek,
+
+  track(offset, dir) {
+    trackPanes(offset);
+    trackChrome(Math.min(1, Math.abs(offset) / pageWidth()), dir);
+  },
+
+  cancel() {
+    hidePeek();
+    trackChrome(0, 0);
+  },
+
+  release(dir, committed) {
+    const glide = 'transform var(--dur-short) var(--ease-enter)';
+    const land = () => {
+      if (committed) {
+        // One synchronous block: store.emit runs its listeners inline, so the
+        // new screen is written into #scroll and both panes are put back at
+        // zero within the same frame. Split across two, the travelled pane
+        // snaps home before the content catches up and the move ends on a
+        // flash of the screen you just left.
+        arrivedBySwipe = true;
+        swipe(dir);
+        arrivedBySwipe = false;
+      }
+      dom.scroll.style.transition = 'none';
+      dom.scroll.style.transform = '';
+      hidePeek();
+      // The render above has written the real title and relit the real tab, so
+      // the inline values the drag was steering are only in the way now.
+      resetChrome();
+    };
+
+    // The bar rides the same glide as the panes: by the time they land it is
+    // already showing the screen they landed on.
+    glideChrome(true);
+    trackChrome(committed ? 1 : 0, committed ? dir : 0);
+
+    if (!committed && !peekDir) {
+      // Rubber-banded at the end of the bar: only the one pane moved, and the
+      // bar never left the tab it was on.
+      dom.scroll.style.transition = glide;
+      dom.scroll.style.transform = '';
+      settled(dom.scroll, () => { dom.scroll.style.transition = 'none'; resetChrome(); });
+      return;
+    }
+
+    // Percentages again, for the same reason they are used on the way out: the
+    // two panes have to finish flush, and a whole width expressed in pixels is
+    // not necessarily a whole width.
+    dom.scroll.style.transition = glide;
+    dom.scroll.style.transform = committed
+      ? 'translateX(' + (dir > 0 ? '-100%' : '100%') + ')'
+      : 'translateX(0)';
+    if (peekDir) {
+      dom.peek.style.transition = glide;
+      // Parked a width out and travelling the same width back, so a committed
+      // swipe lands it exactly where #scroll was.
+      dom.peek.style.transform = committed ? 'translateX(0)' : parkedAt(peekDir);
+    }
+    settled(dom.scroll, land);
+  }
+};
+
+/**
+ * Run `done` when the pane stops moving.
+ *
+ * transitionend on its own is not enough: a frame that never arrives - a
+ * backgrounded tab, a transition that resolves to no change at all - means it
+ * never fires, and the shell would be left holding two panes and a transform
+ * for good. The timer is the one that must not be missed; the event is only
+ * there to make the common case punctual.
+ */
+function settled(node, done) {
+  let over = false;
+  const finish = () => {
+    if (over) return;
+    over = true;
+    node.removeEventListener('transitionend', onEnd);
+    clearTimeout(node.__glide);
+    done();
+  };
+  const onEnd = (e) => { if (e.target === node && e.propertyName === 'transform') finish(); };
+  node.addEventListener('transitionend', onEnd);
+  clearTimeout(node.__glide);
+  // --dur-short is 320ms. The slack is for a frame that arrived late, and it is
+  // deliberately small: until this fires the shell is still holding two panes,
+  // and the seam between them sits on the left edge of the screen.
+  node.__glide = setTimeout(finish, 380);
+}
+
 // Whether the keypad was up on the previous pass, so its slide-in animation
 // runs when it opens and not on every key thereafter.
 let lastKeypad = false;
@@ -217,14 +417,21 @@ function statusBar() {
  * which is where it always looked centred anyway - Home has been drawing a
  * spacer to fake exactly this.
  */
-function header() {
-  const screen = store.ui.screen;
+/**
+ * The bar's title for a screen - including one the app has not moved to yet,
+ * which is what lets the header change with the finger rather than after it.
+ */
+function titleFor(screen) {
+  const SEG_TITLE = { goals: 'Goals', debts: 'Debts & receivables', budgets: 'Budgets' };
+  return TITLES[screen] || SEG_TITLE[store.ui.budgetSeg] || 'Budgets';
+}
 
-  const SEG_TITLE = { goals: 'Goals', debts: 'Debts', budgets: 'Budgets' };
-  const title = TITLES[screen] || SEG_TITLE[store.ui.budgetSeg] || 'Budgets';
+function header() {
+  const title = titleFor(store.ui.screen);
 
   return el('div', { class: HEADER }, [
     el('div', {
+      dataset: { role: 'title' },
       // Line-height 1.4, not 1. At /[1] the box is exactly 17px tall and the
       // ellipsis needs overflow:hidden, so the descender of the g in Settings
       // and Budgets was sliced off by the header's own bottom edge. Titles
@@ -241,20 +448,59 @@ function header() {
   ]);
 }
 
+/** Which of the four bar items is lit for the screen we are on. */
+const navIndex = () => NAV.findIndex(([, , isOn]) => isOn(store.ui.screen));
+
 function nav() {
-  return el('div', { class: NAV_BAR }, NAV.map(([id, glyph, isOn]) => {
-    const on = isOn(store.ui.screen);
-    return el('div', {
-      class: NAV_ITEM + ' ' + TAP + (on ? ' text-ink' : ' text-ink3'),
-      onClick: () => store.go(id)
-    }, [
-      icon(glyph, NAV_ICON),
-      // Active state is an ink icon over a lime dot - no fill, no pill, no label.
-      el('div', {
-        class: 'w-1.5 h-1.5 rounded-full ' + (on ? 'bg-accent' : 'bg-transparent')
-      })
-    ]);
-  }));
+  return el('div', { class: NAV_BAR + ' relative' }, [
+    ...NAV.map(([id, glyph, isOn]) => {
+      const on = isOn(store.ui.screen);
+      return el('div', {
+        class: NAV_ITEM + ' ' + TAP + (on ? ' text-ink' : ' text-ink3'),
+        onClick: () => store.go(id)
+      }, [
+        icon(glyph, NAV_ICON),
+        // A slot rather than the dot itself. It holds the space the dot used
+        // to take - the bar's height is measured off it - while the dot that
+        // is actually drawn is the single node below, so it can travel
+        // between two tabs with the finger instead of blinking across.
+        el('div', {
+          class: 'w-1.5 h-1.5 rounded-full bg-transparent',
+          dataset: { navslot: '1' }
+        })
+      ]);
+    }),
+    // Active state is an ink icon over a lime dot - no fill, no pill, no label.
+    el('div', {
+      class: 'absolute w-1.5 h-1.5 rounded-full bg-accent pointer-events-none',
+      dataset: { role: 'navdot' }
+    })
+  ]);
+}
+
+/**
+ * Put the lime dot where it belongs, or a fraction of the way to the next tab.
+ *
+ * Measured off the slots rather than computed from the bar's padding and icon
+ * size, so it stays right if any of those change - the dot's whole job is to
+ * be exactly where the old in-flow one was.
+ *
+ * @param {number} [progress] 0 at rest, 1 fully arrived at the next tab
+ * @param {number} [dir] which way the finger is going, 0 for nowhere
+ */
+function placeNavDot(progress = 0, dir = 0) {
+  const dot = dom.nav.querySelector('[data-role="navdot"]');
+  if (!dot || !dot.offsetParent) return;
+  const slots = dom.nav.querySelectorAll('[data-navslot]');
+  const from = navIndex();
+  if (from < 0 || !slots.length) return;
+  const to = Math.max(0, Math.min(slots.length - 1, from + dir));
+
+  const box = dot.offsetParent.getBoundingClientRect();
+  const a = slots[from].getBoundingClientRect();
+  const b = slots[to].getBoundingClientRect();
+  dot.style.left = (a.left - box.left + (b.left - a.left) * progress) + 'px';
+  dot.style.top = (a.top - box.top) + 'px';
 }
 
 /*
@@ -390,6 +636,16 @@ function patchAmount() {
   if (!val || !expr || !save) return false;
 
   const { entryExpr, entryAmount, entryValue } = store.ui;
+
+  // A sheet borrowing the keypad has one number and a save button that does not
+  // depend on it, so the amount line is the whole of what a keystroke can
+  // reach. The line-item and save-button work below is the add sheet's alone.
+  if (store.ui.padTarget) {
+    val.textContent = calc.displayText(entryExpr, entryAmount, entryValue);
+    expr.textContent = calc.exprText(entryExpr, entryAmount);
+    return true;
+  }
+
   const items = store.ui.entryItems;
 
   val.textContent = items.length
@@ -436,6 +692,35 @@ function revealSelectedChips(scope) {
     if (chipBox.left >= rowBox.left && chipBox.right <= rowBox.right) continue;
     row.scrollLeft = Math.max(0, on.offsetLeft - 12);
   }
+}
+
+/*
+ * The gate layer: the app lock, or the sign-in screen, or nothing.
+ *
+ * Rebuilt rather than patched only when it opens or closes, so the fade runs
+ * once on arrival instead of on every keystroke in the email field - the same
+ * rule the sheet follows a few lines down.
+ */
+let lastGate = false;
+
+function renderGateLayer() {
+  const content = renderGate();
+  const up = !!content;
+
+  if (!up) {
+    if (lastGate) clear(dom.gate);
+    lastGate = false;
+    return;
+  }
+
+  if (!lastGate) {
+    clear(dom.gate);
+    dom.gate.classList.add('gate--enter');
+  } else {
+    dom.gate.classList.remove('gate--enter');
+  }
+  patch(dom.gate, content);
+  lastGate = true;
 }
 
 function renderSheet() {
@@ -534,40 +819,54 @@ function render(_store, regions) {
   }
 
   if (r.has('body')) {
-    // Crossing a sub-tab is a move with a direction, like crossing a tab - but
-    // only the region below the chips travels, not the chips themselves.
-    const sub = SUB_TABS[screen];
-    const subChanged = !changed && !!sub && store.ui[sub.key] !== lastFilter;
-
-    const content = SCREENS[screen]();
+    // Crossing a filter chip moves the way crossing a tab does, one level in:
+    // the ledger slides, the search box and the chip strip above it stay put.
+    const sliding = screen === 'txns' && !changed && store.ui.filter !== lastFilter;
+    const view = sliding ? dom.scroll.querySelector('[data-testid="activity-list"]') : null;
 
     if (changed) {
-      // A different screen is a transition, not a re-render: the outgoing
-      // content has nothing in common with the incoming one, and the push and
-      // the stagger are the whole point of the moment.
+      // A screen dragged in by hand is already built and already on screen, in
+      // #peek. Adopt those nodes instead of building the same tree a second
+      // time: the travel happened under the finger, so both the push and the
+      // stagger would be replaying an arrival the user has watched finish -
+      // which is the redraw you could see happening after every swipe.
+      const adopt = arrivedBySwipe && peekScreen === screen && !!dom.peek.firstChild;
+
       clear(dom.scroll);
-      content.forEach(node => dom.scroll.appendChild(node));
-      pushIn(dom.scroll, store.ui.direction);
-      stagger(dom.scroll);
+      if (adopt) {
+        while (dom.peek.firstChild) dom.scroll.appendChild(dom.peek.firstChild);
+      } else {
+        // A different screen reached any other way is a transition, not a
+        // re-render: the outgoing content has nothing in common with the
+        // incoming one, and the push and the stagger are the point of the
+        // moment.
+        SCREENS[screen]().forEach(node => dom.scroll.appendChild(node));
+        if (!arrivedBySwipe) pushIn(dom.scroll, store.ui.direction);
+        stagger(dom.scroll);
+      }
+      arrivedBySwipe = false;
       dom.scroll.scrollTop = 0;
-    } else if (subChanged) {
-      // Same screen, different sub-tab: patch like any re-render so the chip
-      // row itself is left alone, then travel only the region under it.
-      patch(dom.scroll, content);
-      const page = dom.scroll.querySelector('[data-testid="activity-list"]') || dom.scroll;
-      pushIn(page, store.ui.filterDir);
-      stagger(page);
-      dom.scroll.scrollTop = 0;
+    } else if (sliding && view) {
+      // Deliberately not a patch of the body. The chips are the only thing
+      // outside the ledger a filter change touches, so they are relit on their
+      // own; the ledger is handed finished panes and slides them. Patching it
+      // would rewrite the rows in place, which is the redraw you could watch
+      // happening and the reason this stopped being an in-place animation.
+      const chips = dom.scroll.querySelector('[data-testid="chiprow"]');
+      if (chips) patch(chips, filterChips());
+      slideThrough(view, renderLedger(store.ui.filter), store.ui.filterDir);
     } else {
       // Same screen: write the differences into what is already on it. Scroll
       // position, sideways chip scroll, focus and caret are preserved by never
       // being disturbed, so none of them need saving and restoring around it.
-      patch(dom.scroll, content);
+      patch(dom.scroll, SCREENS[screen]());
     }
     lastScreen = screen;
-    lastFilter = sub ? store.ui[sub.key] : null;
+    lastFilter = screen === 'txns' ? store.ui.filter : null;
     revealSelectedChips(dom.scroll);
   }
+
+  renderGateLayer();
 
   if (r.has('sheet') || r.has('amount')) renderSheet();
 
@@ -586,6 +885,8 @@ function render(_store, regions) {
     clear(dom.nav);
     fabStack().forEach(node => dom.nav.appendChild(node));
     dom.nav.appendChild(nav());
+    // The bar is rebuilt whole, so the dot arrives with no position on it.
+    placeNavDot(0);
   }
 
   restoreFocus(focus);
@@ -607,13 +908,31 @@ async function wireNative() {
   }
 
   if (App) {
-    // Back closes the date dialog first, then the sheet under it, then walks
-    // back to Home, then exits - innermost thing on the screen first. This is
+    /*
+     * Lock again whenever the app leaves the foreground.
+     *
+     * Guarded by isPrompting(): on many Android builds raising BiometricPrompt
+     * backgrounds the WebView, which fires this very listener - so without the
+     * guard the prompt would re-arm the lock underneath itself and ask again
+     * the moment it was answered, forever.
+     */
+    App.addListener('appStateChange', ({ isActive }) => {
+      if (isPrompting()) return;
+      if (!store.ui.appLock || !store.ui.lockAvailable) return;
+      if (!isActive) { store.set({ locked: true }); return; }
+      if (store.ui.locked) askToUnlock();
+    });
+
+    // Back closes the date dialog first, then the keypad, then the sheet under
+    // it, then walks back to Home, then exits - innermost first. This is
     // the only back affordance now that the header has none, so it has to
     // unwind the whole stack rather than just the sheet.
     App.addListener('backButton', () => {
+      // A gate is not something back can dismiss - that is the point of it.
+      if (store.ui.locked || store.ui.authGate) return;
       const spec = (SHEET_DATES[store.ui.sheet] || (() => null))();
       if (spec) { spec.onClose(); return; }
+      if (store.ui.keypadOpen) { store.closePad(); return; }
       if (store.ui.sheet) { store.set({ sheet: null }); return; }
       if (store.ui.fabMenu) { store.set({ fabMenu: false }); return; }
       if (store.ui.screen !== 'home') { store.go('home'); return; }
@@ -629,10 +948,13 @@ async function wireNative() {
 async function boot() {
   dom.root = document.getElementById('app');
   dom.header = document.getElementById('header');
+  dom.pager = document.getElementById('pager');
   dom.scroll = document.getElementById('scroll');
+  dom.peek = document.getElementById('peek');
   dom.overlay = document.getElementById('overlay');
   dom.toast = document.getElementById('toast');
   dom.nav = document.getElementById('nav');
+  dom.gate = document.getElementById('gate');
 
   if (isNative()) {
     // Real status bar above us; keep clear of it instead of drawing a fake one.
@@ -649,13 +971,64 @@ async function boot() {
     canSwipe: (dir) => !!swipeTarget(dir),
     // The + menu's scrim already swallows the pointer, but say it here too:
     // the menu owns the screen while it is open, same as a sheet does.
-    enabled: () => !store.ui.sheet && !store.ui.fabMenu
+    enabled: () => !store.ui.sheet && !store.ui.fabMenu,
+    // With this, the neighbouring tab is drawn and dragged in beside the one
+    // you are on. Without it - which is what reduced motion asks for - the
+    // gesture still changes tab, it just does not show you the journey.
+    page: pager
+  });
+
+  // Tap past the keys to put them away. The overlay outlives every render, so
+  // like the swipe this is bound once rather than reclaimed on each pass.
+  //
+  // Bubble phase, deliberately: by the time this runs the control the tap
+  // landed on has already fired its own handler, so collapsing the footer
+  // underneath cannot move the target out from under the finger mid-tap.
+  //
+  // `data-pad="open"` marks the controls whose whole job is to raise or
+  // retarget the keys - the amount rows, Add item, an item's amount. They have
+  // to be exempt, or this would close on the bubble the pad they just opened.
+  // They declare it themselves rather than being listed here, so a new one
+  // cannot be missed.
+  dom.overlay.addEventListener('click', (e) => {
+    // A tap on the scrim has already closed the whole sheet by the time this
+    // runs, and closing the keys under it would only cost a second render pass.
+    if (!store.ui.sheet || !store.ui.keypadOpen) return;
+    if (e.target.closest('[data-foot="keys"], [data-pad="open"]')) return;
+    store.closePad();
   });
 
   await store.init();
+
+  /*
+   * The gates, in the order they have to be answered.
+   *
+   * The lock first: it decides whether anything at all may be seen, so it has
+   * to be up before the first paint rather than flashed over afterwards. Then
+   * the sign-in screen, and only when there is no session and the screen has
+   * not already been waved past once.
+   *
+   * Both are set before `render()` so the very first frame already has the
+   * gate in it. The biometric prompt itself is raised after that frame, so the
+   * user is looking at the lock screen while the system dialog comes up rather
+   * than at their own ledger.
+   */
+  const locked = store.ui.appLock && store.ui.lockAvailable;
+  const skipped = gateSkipped();
+  store.ui.locked = locked;
+  store.ui.authGate = !supabase.signedIn && !skipped;
+  store.ui.authRemember = rememberedChoice();
+  store.ui.authEmail = rememberedEmail();
+
   store.subscribe(render);
   render();
   await wireNative();
+
+  if (locked) askToUnlock();
+
+  // Beside the app, never in front of it: a rate that never arrives costs
+  // nothing but a slightly stale conversion. Deliberately not awaited.
+  refreshRate(store);
 
   // The store, reachable from a console. There is no devtools panel for a
   // vanilla app, so this is how you inspect state over chrome://inspect on a

@@ -7,7 +7,9 @@
 //     and the conflict rule can be asserted deterministically
 //
 // The live project is checked separately - see the round trip at the bottom,
-// which is skipped unless PAISA_TEST_EMAIL is set.
+// which is skipped unless PAISA_TEST_EMAIL is set. Run it after any change to
+// the request shapes: the stub answers 201 to anything, so only the real
+// PostgREST will tell you a batch is malformed.
 
 import { test, expect } from './fixtures.js';
 
@@ -147,6 +149,50 @@ test.describe('push', () => {
     const sent = JSON.parse(txnPost.body);
     expect(sent.length).toBeGreaterThanOrEqual(16);
     expect(sent[0].user_id).toBe('00000000-0000-4000-8000-000000000001');
+  });
+
+  /**
+   * PostgREST builds one INSERT with one column list for a bulk write, so it
+   * rejects a batch whose objects do not all carry the same keys:
+   * `{"code":"PGRST102","message":"All object keys must match"}`.
+   *
+   * Local rows do not naturally satisfy that. An account has `icon` or `brand`
+   * or `color` and rarely all three, and an absent optional column is an absent
+   * key. So the accounts batch of the very first bootstrap was rejected whole,
+   * every push after it stayed queued behind it, and nothing had ever reached
+   * the project - the tables were empty on a database that had been "working"
+   * for weeks. The stub answers 201 to anything, which is exactly why this went
+   * unnoticed; assert the shape rather than the status.
+   */
+  test('every row in a batch carries the same keys', async ({ app, page }) => {
+    const calls = await stubSupabase(page);
+    await app.open();
+    await signIn(page);
+    await runSync(page);
+
+    const posts = calls.filter(c => c.method === 'POST' && c.path.includes('/rest/v1/'));
+    expect(posts.length).toBeGreaterThan(0);
+
+    for (const post of posts) {
+      const rows = JSON.parse(post.body);
+      const shape = JSON.stringify(Object.keys(rows[0]).sort());
+      for (const row of rows) {
+        expect(JSON.stringify(Object.keys(row).sort()), post.path).toBe(shape);
+      }
+    }
+
+    // And the one that actually failed: accounts, where `icon` and `brand` are
+    // each set on some rows and absent on others. The union is over the keys
+    // that are actually present, so `color` - which no account uses - is
+    // rightly not invented.
+    const accounts = JSON.parse(posts.find(c => c.path.endsWith('/accounts')).body);
+    expect(accounts.length).toBeGreaterThan(1);
+    for (const key of ['icon', 'brand']) {
+      for (const row of accounts) expect(row, key).toHaveProperty(key);
+    }
+    // The filled-in ones are null, not dropped: these are whole rows, so a key
+    // this row lacks is a column this row has no value for.
+    expect(accounts.find(a => a.id === 'a1').brand).toBeNull();
   });
 
   test('the bootstrap does not repeat on the next sync', async ({ app, page }) => {
@@ -318,5 +364,43 @@ test.describe('signing out', () => {
     const db = await app.db();
     expect(db.txns).toHaveLength(before);
     expect(db.settings['sync.bootstrapped']).toBe('false');
+  });
+});
+
+
+/* ---------------- the live project ---------------- */
+
+/**
+ * The real round trip, against the real Supabase project.
+ *
+ * Skipped unless PAISA_TEST_EMAIL and PAISA_TEST_PASSWORD are set, because it
+ * creates an account and uploads a ledger to it. Use a throwaway address:
+ *
+ *   PAISA_TEST_EMAIL=someone+test@example.com  *   PAISA_TEST_PASSWORD=whatever123 npx playwright test sync --project=light
+ *
+ * This is the only test that can catch a request the stub would wave through.
+ */
+test.describe('the live project', () => {
+  const EMAIL = process.env.PAISA_TEST_EMAIL;
+  const PASSWORD = process.env.PAISA_TEST_PASSWORD;
+
+  test('signing up uploads the whole ledger and reads it back', async ({ app, page }) => {
+    test.skip(!EMAIL || !PASSWORD, 'set PAISA_TEST_EMAIL and PAISA_TEST_PASSWORD');
+    test.setTimeout(120000);
+
+    await app.open();
+    const out = await page.evaluate(async ([email, password]) => {
+      const { supabase } = await import('/js/data/supabase.js');
+      const { sync } = await import('/js/data/sync.js');
+      await supabase.signUp(email, password);
+      const res = await sync.run();
+      return { signedIn: supabase.signedIn, status: sync.status, error: sync.lastError, res };
+    }, [EMAIL, PASSWORD]);
+
+    expect(out.signedIn).toBe(true);
+    expect(out.error).toBeNull();
+    expect(out.status).toBe('idle');
+    expect(out.res.pushed).toBeGreaterThan(0);
+    expect(out.res.pulled).toBeGreaterThan(0);
   });
 });

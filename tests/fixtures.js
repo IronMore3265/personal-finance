@@ -11,6 +11,10 @@ import { test as base, expect } from '@playwright/test';
 
 export const CLOCK = '2026-08-28T10:00:00';
 export const DB_KEY = 'paisa.db.v1';
+/* Marks the sign-in screen as already waved past. See app.open below. */
+export const SKIP_KEY = 'paisa.auth.skipped';
+/* The offline floor in data/seed.js; the rate the suite pretends to fetch. */
+export const SEED_USD_RATE = 122;
 
 export const test = base.extend({
   // Collected console/page errors, asserted empty after every test.
@@ -27,6 +31,9 @@ export const test = base.extend({
     // Patterns a test has declared it expects; applied again at teardown so
     // errors logged after the tolerate() call are covered too.
     const tolerated = [];
+    // Opened on first use by touchSwipe, and only there: raw touch input is
+    // the one thing Playwright's own API cannot inject.
+    let cdp = null;
     // A fixed clock freezes document.timeline, so any CSS animation stops at
     // frame zero and every measurement reads a mid-flight transform - the
     // sheet would appear to sit 800px below the fold. Asking for reduced
@@ -35,9 +42,36 @@ export const test = base.extend({
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.clock.install({ time: new Date(CLOCK) });
 
+    /*
+     * Pin the exchange rate.
+     *
+     * data/fx.js fetches USD/BDT at boot, and without this the suite reaches
+     * the real service: every total on every screen then moves with the actual
+     * market, so a screenshot taken today stops matching one taken last week
+     * and a run with no network differs from one with. It is answered with the
+     * same rate data/seed.js carries, so the money in a test is exactly the
+     * money in the seed.
+     *
+     * Routes added by a test take precedence over this one, so the specs that
+     * are about the rate itself still control it.
+     */
+    await page.route('**open.er-api.com**', route => route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ rates: { BDT: SEED_USD_RATE } })
+    }));
+
     const app = {
-      /** Open the app with optional pre-seeded localStorage. */
+      /**
+       * Open the app with optional pre-seeded localStorage.
+       *
+       * The sign-in screen is marked as already dismissed unless a test asks
+       * for it with `openAtGate()`. It is a once-per-device prompt that covers
+       * the whole shell, so leaving it up would put a gate in front of every
+       * spec in the suite - none of which is about signing in.
+       */
       async open(seed) {
+        await page.addInitScript(k => window.localStorage.setItem(k, '1'), SKIP_KEY);
         if (seed !== undefined) {
           await page.addInitScript(
             ([key, value]) => {
@@ -51,6 +85,20 @@ export const test = base.extend({
         await page.waitForSelector('#boot[data-gone="1"]', { state: 'attached' });
         // The screen body is built in the same pass as the boot fade.
         await expect(page.locator('#scroll')).not.toBeEmpty();
+      },
+
+      /**
+       * Open with the sign-in screen up, the way a real first run sees it.
+       *
+       * Only the gate specs want this; everything else goes through open().
+       */
+      async openAtGate() {
+        // No init script: a fresh context has no storage, so the flag open()
+        // would have written is simply never written. Removing it on every
+        // navigation instead would undo the click the test just made.
+        await page.goto('/');
+        await page.waitForSelector('#boot[data-gone="1"]', { state: 'attached' });
+        await expect(page.locator('#gate')).not.toBeEmpty();
       },
 
       /** The persisted database, as the app has it right now. */
@@ -96,6 +144,49 @@ export const test = base.extend({
           await page.mouse.move(x - dir * 20 * step, y);
         }
         await page.mouse.up();
+      },
+
+      /**
+       * The same drag, as a finger makes it.
+       *
+       * Worth its own path rather than trusting `swipe` above. A mouse drag is
+       * never arbitrated: the pointer stream runs to pointerup whatever
+       * direction it goes. A finger is - Chrome decides on the first move
+       * whether the pan belongs to a scroller, and where it claims the gesture
+       * it ends the pointer stream in `pointercancel` a pixel in. That is
+       * exactly how the swipe came to be dead on the phone while every mouse
+       * test above stayed green, so the gesture needs one test that goes
+       * through the real input pipeline. Synthetic `TouchEvent`s would not do
+       * either - they raise no pointer events at all, and no arbitration.
+       */
+      async touchSwipe(dir, steps = 8) {
+        cdp = cdp || await page.context().newCDPSession(page);
+        const box = await page.locator('#scroll').boundingBox();
+        // Below the search box and the chip row, which own their own gestures.
+        const y = box.y + Math.min(box.height - 20, 260);
+        const x = box.x + box.width / 2;
+        await app.touchDrag(x, y, -dir * 20 * steps, 0, steps);
+      },
+
+      /** A finger, put down at (x, y) and moved by (dx, dy) over `steps`. */
+      async touchDrag(x, y, dx, dy, steps = 8) {
+        cdp = cdp || await page.context().newCDPSession(page);
+        const at = (px, py) => [{ x: px, y: py, radiusX: 5, radiusY: 5, force: 1, id: 1 }];
+
+        await cdp.send('Input.dispatchTouchEvent', {
+          type: 'touchStart', touchPoints: at(x, y)
+        });
+        for (let step = 1; step <= steps; step++) {
+          await cdp.send('Input.dispatchTouchEvent', {
+            type: 'touchMove',
+            touchPoints: at(x + (dx * step) / steps, y + (dy * step) / steps)
+          });
+          // A frame between moves: the arbitration this exists to exercise is
+          // made on the compositor, not on the event queue.
+          await page.waitForTimeout(16);
+        }
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await page.waitForTimeout(50);
       },
 
       /**

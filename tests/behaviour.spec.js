@@ -787,11 +787,126 @@ test.describe('debts', () => {
     await page.locator('[data-testid="row"]', { hasText: 'Record a debt' }).click();
 
     await page.locator('#debt-person').fill('Tanvir');
-    await page.locator('#debt-amount').fill('2500');
+    // The amount is the app's own keypad now, not a native field.
+    await app.keys(['2', '5', '0', '0']);
     await page.locator('[data-testid="savebtn"]').click();
 
     await expect(page.locator('[data-testid="debtrow"]', { hasText: 'Tanvir' })).toBeVisible();
     expect((await app.db()).debts.some(d => d.person === 'Tanvir')).toBe(true);
+  });
+});
+
+/* ---------------- the shared keypad ---------------- */
+
+test.describe('the keypad is shared by every amount', () => {
+  test('the debt sheet takes arithmetic on the keypad', async ({ app, page }) => {
+    await app.open();
+    await app.goto('budgets');
+    await page.locator('[data-testid="tab"]', { hasText: 'Debts' }).click();
+    await page.locator('[data-testid="row"]', { hasText: 'Record a debt' }).click();
+
+    // No native field to fill: there is no <input> for the amount any more.
+    await expect(page.locator('#debt-amount')).toHaveCount(0);
+
+    await page.locator('#debt-person').fill('Shuvo');
+    await app.keys(['1', '2', '×', '3']);
+    await expect(page.locator('[data-testid="amount-val"]')).toHaveText('36');
+
+    await page.locator('[data-testid="savebtn"]').click();
+    expect((await app.db()).debts.find(d => d.person === 'Shuvo').principal).toBe(36);
+  });
+
+  test('the scheduled expense sheet takes arithmetic on the keypad', async ({ app, page }) => {
+    await app.open();
+    await app.goto('scheduled');
+    await page.locator('[data-testid="row"]', { hasText: 'New scheduled expense' }).click();
+
+    await expect(page.locator('#rec-amount')).toHaveCount(0);
+
+    await page.locator('#rec-name').fill('Broadband');
+    await app.keys(['1', '2', '0', '0', '+', '5', '0']);
+    await expect(page.locator('[data-testid="amount-val"]')).toHaveText('1,250');
+
+    await page.locator('[data-testid="savebtn"]').click();
+    expect((await app.db()).bills.find(b => b.name === 'Broadband').amount).toBe(1250);
+  });
+
+  test('a tap past the keys puts them away, and still works the control', async ({ app, page }) => {
+    await app.open();
+    await app.goto('budgets');
+    await page.locator('[data-testid="tab"]', { hasText: 'Debts' }).click();
+    await page.locator('[data-testid="row"]', { hasText: 'Record a debt' }).click();
+
+    await app.keys(['5', '0', '0']);
+    await expect(page.locator('[data-testid="keypad"]')).toBeVisible();
+
+    // The direction toggle is an ordinary control in the sheet body. Tapping it
+    // has to do both things: put the keys away, and register the tap itself.
+    await page.locator('[data-testid="sheet-body"] div', { hasText: 'I owe them' }).last().click();
+    await expect(page.locator('[data-testid="keypad"]')).toHaveCount(0);
+    expect(await page.evaluate(() => window.__paisa.ui.editDebt.direction)).toBe('i_owe');
+    // Dismissing is not discarding - the amount was written on every keystroke.
+    expect(await page.evaluate(() => window.__paisa.ui.editDebt.principal)).toBe(500);
+  });
+
+  test('tapping the amount row again does not close the keys under the finger', async ({ app, page }) => {
+    await app.open();
+    await app.goto('budgets');
+    await page.locator('[data-testid="tab"]', { hasText: 'Debts' }).click();
+    await page.locator('[data-testid="row"]', { hasText: 'Record a debt' }).click();
+
+    await app.keys(['7']);
+    await page.locator('[data-testid="amount-row"]').click();
+    await expect(page.locator('[data-testid="keypad"]')).toBeVisible();
+  });
+
+  test('the keys do not follow the buffer from one sheet to the next', async ({ app, page }) => {
+    await app.open();
+    await app.goto('budgets');
+    await page.locator('[data-testid="tab"]', { hasText: 'Debts' }).click();
+    await page.locator('[data-testid="row"]', { hasText: 'Record a debt' }).click();
+    await app.keys(['9', '9']);
+    await app.dismiss();
+
+    // The add sheet owns the same three buffer fields; opening it must not find
+    // them still pointed at the debt draft.
+    await page.locator('[data-testid="fab"]').click();
+    await app.fabMenu('Log transaction');
+    expect(await page.evaluate(() => window.__paisa.ui.padTarget)).toBe(null);
+    await expect(page.locator('[data-testid="amount-val"]')).toHaveText('0');
+  });
+});
+
+/* ---------------- goals ---------------- */
+
+test.describe('goals', () => {
+  test('a custom contribution takes any amount, not just the two pills', async ({ app, page }) => {
+    await app.open();
+    await app.goto('budgets');
+    await page.locator('[data-testid="tab"]', { hasText: 'Goals' }).click();
+
+    const before = (await app.db()).goals.find(g => g.id === 'g2').current;
+
+    // g2 is the MacBook goal, second in the seeded list.
+    await page.locator('[data-testid="goal-custom"]').nth(1).click();
+    await app.keys(['7', '5', '0', '0']);
+    await page.locator('[data-testid="savebtn"]').click();
+
+    await expect(page.locator('[data-testid="sheet"]')).toHaveCount(0);
+    expect((await app.db()).goals.find(g => g.id === 'g2').current).toBe(before + 7500);
+  });
+
+  test('a contribution cannot overshoot the target', async ({ app, page }) => {
+    await app.open();
+    await app.goto('budgets');
+    await page.locator('[data-testid="tab"]', { hasText: 'Goals' }).click();
+
+    // g3 is 84,000 of 90,000 - this is more than the 6,000 that is left.
+    await page.locator('[data-testid="goal-custom"]').nth(2).click();
+    await app.keys(['5', '0', '0', '0', '0']);
+    await page.locator('[data-testid="savebtn"]').click();
+
+    expect((await app.db()).goals.find(g => g.id === 'g3').current).toBe(90000);
   });
 });
 
@@ -1137,8 +1252,64 @@ test.describe('swipe navigation', () => {
     await app.goto('txns');
     await app.swipe(1);
 
-    expect(await filter(page)).toBe('expense');
+    expect(await screen(page)).toBe('budgets');
     await expect(page.locator('[data-testid="sheet"]')).toHaveCount(0);
+  });
+
+  /**
+   * The gesture as a phone actually delivers it.
+   *
+   * Every test above drives it with the mouse, and a mouse drag is never
+   * arbitrated - which is why they all passed while the swipe did nothing on
+   * a device. The scroll region was `touch-action: auto`, so Chrome reserved
+   * both axes, claimed the sideways pan on the first move and ended the
+   * pointer stream in `pointercancel` before the gesture had gone anywhere.
+   * Only real touch input goes through that decision.
+   */
+  test('a finger swipe crosses the tab, not only a mouse drag', async ({ app, page }) => {
+    await app.open();
+
+    await app.touchSwipe(1);
+    expect(await screen(page)).toBe('txns');
+
+    await app.touchSwipe(-1);
+    expect(await screen(page)).toBe('home');
+  });
+
+  /** The other half of naming the axis: vertical is still the browser's. */
+  test('a finger drag up the list scrolls it and stays on the tab', async ({ app, page }) => {
+    await app.open();
+    await app.goto('txns');
+
+    const box = await page.locator('#scroll').boundingBox();
+    await app.touchDrag(box.x + box.width / 2, box.y + box.height - 60, 0, -160);
+
+    expect(await page.evaluate(() => document.getElementById('scroll').scrollTop))
+      .toBeGreaterThan(0);
+    expect(await screen(page)).toBe('txns');
+  });
+
+  /**
+   * And the third axis claim: a row that scrolls sideways of its own accord
+   * still does, even though its container has given sideways to the swipe.
+   * Chrome resolves the pan against the nearest scroller that can take it,
+   * which is the row - so `pan-y` above it never reaches this gesture.
+   */
+  test('a chip row that overflows keeps its own sideways scroll', async ({ app, page }) => {
+    // Narrow enough that the four filter chips do not fit.
+    await page.setViewportSize({ width: 300, height: 700 });
+    await app.open();
+    await app.goto('txns');
+
+    const row = page.locator('[data-testid="chiprow"]').first();
+    expect(await row.evaluate(n => n.scrollWidth > n.clientWidth + 1)).toBe(true);
+
+    const box = await row.boundingBox();
+    await app.touchDrag(box.x + box.width - 15, box.y + box.height / 2, -100, 0);
+
+    expect(await row.evaluate(n => n.scrollLeft)).toBeGreaterThan(0);
+    expect(await filter(page)).toBe('all');
+    expect(await screen(page)).toBe('txns');
   });
 
   test('a sheet owns the gesture while it is up', async ({ app, page }) => {
@@ -1153,34 +1324,62 @@ test.describe('swipe navigation', () => {
   });
 });
 
-/* ---------------- Activity's filter chips as sub-tabs ---------------- */
+/* ---------------- Activity's filter chips ---------------- */
 
 test.describe('activity filters', () => {
   const filter = (page) => page.evaluate(() => window.__paisa.ui.filter);
   const screen = (page) => page.evaluate(() => window.__paisa.ui.screen);
+  const chip = (page, name) =>
+    page.locator('[data-testid="chiprow"] [data-testid="chip"]', { hasText: name });
 
-  test('a swipe walks the chips before it leaves the screen', async ({ app, page }) => {
+  /**
+   * The chips used to be walked by the same sideways gesture that changes tab,
+   * which made one gesture mean two different things depending on where in the
+   * strip you were standing, and put Budgets four swipes from Activity. They
+   * are tap-only now: sideways always leaves the screen.
+   */
+  test('a swipe crosses the screen rather than walking the chips', async ({ app, page }) => {
     await app.open();
     await app.goto('txns');
     expect(await filter(page)).toBe('all');
 
-    for (const expected of ['expense', 'income', 'sms']) {
-      await app.swipe(1);
-      expect(await filter(page)).toBe(expected);
-      expect(await screen(page)).toBe('txns');
-      await expect(page.locator('[data-testid="chip"][data-on="1"]').first())
-        .toHaveAttribute('data-on', '1');
-    }
-
-    // Past the last chip the same gesture crosses to the next tab.
     await app.swipe(1);
     expect(await screen(page)).toBe('budgets');
+
+    await app.swipe(-1);
+    expect(await screen(page)).toBe('txns');
+    expect(await filter(page)).toBe('all');
   });
 
-  test('the swiped chip is the one the ledger is filtered by', async ({ app, page }) => {
+  /** The same, by finger - see the tab swipe above for why separately. */
+  test('a finger swipe crosses the screen rather than walking the chips', async ({ app, page }) => {
     await app.open();
     await app.goto('txns');
+
+    await app.touchSwipe(1);
+    expect(await screen(page)).toBe('budgets');
+    expect(await filter(page)).toBe('all');
+  });
+
+  /** Leaving and coming back must not quietly re-pick a chip for you. */
+  test('swiping in and out of Activity leaves the chip where it was', async ({ app, page }) => {
+    await app.open();
+    await app.goto('txns');
+    await chip(page, 'Income').click();
+    expect(await filter(page)).toBe('income');
+
     await app.swipe(1);
+    expect(await screen(page)).toBe('budgets');
+    await app.swipe(-1);
+
+    expect(await screen(page)).toBe('txns');
+    expect(await filter(page)).toBe('income');
+  });
+
+  test('the tapped chip is the one the ledger is filtered by', async ({ app, page }) => {
+    await app.open();
+    await app.goto('txns');
+    await chip(page, 'Expense').click();
 
     await expect(page.locator('[data-testid="chiprow"] [data-testid="chip"][data-on="1"]'))
       .toHaveText('Expense');
@@ -1191,44 +1390,84 @@ test.describe('activity filters', () => {
     expect(rows).toBe(expenses);
   });
 
-  test('swiping into Activity lands on the chip nearest the edge it came from', async ({ app, page }) => {
+  /**
+   * Tapping a chip two along slides the ledger through the ones in between on
+   * its way there. The panes themselves are not assertable here - the suite
+   * runs under reduced motion, which mounts the destination and skips the
+   * slide - so what is checked is that skipping chips still lands correctly.
+   * tests/pager.spec.js drives the animation itself.
+   */
+  test('tapping a chip two along lands on that chip, not on one in between', async ({ app, page }) => {
     await app.open();
+    await app.goto('txns');
+    await chip(page, 'From SMS').click();
 
-    // Forward from Home: the first chip, so the next swipe has three to walk.
-    await app.swipe(1);
-    expect(await screen(page)).toBe('txns');
-    expect(await filter(page)).toBe('all');
-
-    await app.goto('budgets');
-    // Backward from Budgets: the last chip, for the same reason.
-    await app.swipe(-1);
-    expect(await screen(page)).toBe('txns');
     expect(await filter(page)).toBe('sms');
+    await expect(page.locator('[data-testid="chiprow"] [data-testid="chip"][data-on="1"]'))
+      .toHaveText('From SMS');
+
+    const rows = await page.locator('[data-testid="activity-list"] [data-testid="row"]').count();
+    const fromSms = await page.evaluate(
+      () => window.__paisa.db.txns.filter(t => t.source === 'sms').length
+    );
+    expect(rows).toBe(fromSms);
   });
 
-  test('tapping a chip moves the ledger in the direction the chips run', async ({ app, page }) => {
+  test('tapping a chip records the direction the panes should travel', async ({ app, page }) => {
     await app.open();
     await app.goto('txns');
 
-    await page.locator('[data-testid="chiprow"] [data-testid="chip"]', { hasText: 'Income' }).click();
+    await chip(page, 'Income').click();
     expect(await filter(page)).toBe('income');
     expect(await page.evaluate(() => window.__paisa.ui.filterDir)).toBe(1);
 
-    await page.locator('[data-testid="chiprow"] [data-testid="chip"]', { hasText: 'Expense' }).click();
+    await chip(page, 'Expense').click();
     expect(await filter(page)).toBe('expense');
     expect(await page.evaluate(() => window.__paisa.ui.filterDir)).toBe(-1);
   });
 
-  test('the search box and the chips stay put while the ledger crosses', async ({ app, page }) => {
+  /**
+   * The point of the whole thing: a filter change moves nothing. The search
+   * box, the chip strip and the top of the ledger are all exactly where they
+   * were - only what is written in the rows is different.
+   */
+  test('nothing moves when the filter changes', async ({ app, page }) => {
     await app.open();
     await app.goto('txns');
-    const before = await page.locator('#search-input').boundingBox();
 
-    await app.swipe(1);
+    const search = await page.locator('#search-input').boundingBox();
+    const ledger = await page.locator('[data-testid="activity-list"]').boundingBox();
+    const chips = await page.locator('[data-testid="chiprow"]').boundingBox();
 
-    const after = await page.locator('#search-input').boundingBox();
-    expect(after.y).toBeCloseTo(before.y, 0);
-    await expect(page.locator('[data-testid="activity-list"]')).toBeVisible();
+    await chip(page, 'Income').click();
+
+    expect((await page.locator('#search-input').boundingBox()).y).toBeCloseTo(search.y, 0);
+    expect((await page.locator('[data-testid="chiprow"]').boundingBox()).y).toBeCloseTo(chips.y, 0);
+
+    const after = await page.locator('[data-testid="activity-list"]').boundingBox();
+    expect(after.y).toBeCloseTo(ledger.y, 0);
+    expect(after.x).toBeCloseTo(ledger.x, 0);
+  });
+
+  /**
+   * A filter change is not a trip to the top of a different page - it used to
+   * send the list back to the top, which is right for a page that has just
+   * slid in and wrong for one that never moved.
+   *
+   * Driven through the store rather than by clicking the chip: a click focuses
+   * the chip, and a browser scrolls a newly focused control into view, so the
+   * click would set the scroll position to zero by itself and prove nothing.
+   */
+  test('the ledger keeps its scroll position across a filter change', async ({ app, page }) => {
+    await app.open();
+    await app.goto('txns');
+    await page.evaluate(() => { document.getElementById('scroll').scrollTop = 120; });
+
+    await page.evaluate(() => window.__paisa.setFilter('expense'));
+
+    expect(await page.evaluate(() => window.__paisa.ui.filter)).toBe('expense');
+    expect(await page.evaluate(() => document.getElementById('scroll').scrollTop))
+      .toBeCloseTo(120, 0);
   });
 });
 

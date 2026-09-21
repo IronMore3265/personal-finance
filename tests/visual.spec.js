@@ -100,9 +100,22 @@ const STATES = [
     await page.locator('[data-testid="debtrow"]', { hasText: 'Rafi' }).click();
     await page.locator('[data-testid="daterow"] [data-testid="chip"]').first().click();
   }],
+  // The keys in a sheet that borrows them, to catch a panel that only the add
+  // sheet was ever laid out for.
+  ['debt-keys', async ({ app, page }) => {
+    await app.goto('budgets');
+    await page.locator('[data-testid="tab"]', { hasText: 'Debts' }).click();
+    await page.locator('[data-testid="debtrow"]', { hasText: 'Rafi' }).click();
+    await page.locator('[data-testid="amount-row"]').click();
+  }],
   ['recurring-sheet', async ({ app, page }) => {
     await app.goto('scheduled');
     await page.locator('[data-testid="row"]', { hasText: 'Netflix' }).first().click();
+  }],
+  ['goal-sheet', async ({ app, page }) => {
+    await app.goto('budgets');
+    await page.locator('[data-testid="tab"]', { hasText: 'Goals' }).click();
+    await page.locator('[data-testid="goal-custom"]').first().click();
   }],
   ['sms-sheet', async ({ app, page }) => {
     await app.goto('txns');

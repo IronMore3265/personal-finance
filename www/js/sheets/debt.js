@@ -10,6 +10,8 @@ import { store } from '../core/store.js';
 import { chip, fieldLabel, accountChip } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
 import { dateLabel } from '../ui/datepicker.js';
+import { keypad, panelHead, amountField } from '../ui/keypad.js';
+import * as calc from '../core/calc.js';
 import {
   CHIPROW_FLUSH, TAP, SHEET, SHEET_HEAD, SHEET_BODY, SHEET_FOOT, SHEET_TITLE,
   SHEET_ICON, SHEET_LEDE, SAVEBTN, DELBTN_WIDE, FIELD, MINILABEL
@@ -62,6 +64,7 @@ export function renderDebtSheet() {
   const d = store.ui.editDebt;
   if (!d) return el('div', { class: SHEET });
   const armed = store.ui.confirmDelete;
+  const live = store.ui.keypadOpen && store.ui.padTarget === 'debt';
 
   const body = el('div', { class: SHEET_BODY, dataset: { testid: 'sheet-body' } }, [
     directionSeg(d),
@@ -76,14 +79,15 @@ export function renderDebtSheet() {
     }),
 
     fieldLabel('Amount'),
-    el('input', {
-      id: 'debt-amount',
-      class: FIELD + ' font-bold text-[20px]',
-      inputmode: 'decimal',
-      value: String(d.principal || ''),
-      placeholder: '0',
-      onInput: (e) => { store.ui.editDebt.principal = parseFloat(e.target.value || '0') || 0; }
-    }),
+    // The app's own keypad rather than the OS keyboard, so a loan split several
+    // ways can be entered as the arithmetic it arrived as.
+    amountField(
+      live ? calc.displayText(store.ui.entryExpr, store.ui.entryAmount, store.ui.entryValue)
+        : (d.principal ? calc.trim(d.principal) : '0'),
+      live ? calc.exprText(store.ui.entryExpr, store.ui.entryAmount) : '',
+      live,
+      () => store.openPad('debt', d.principal)
+    ),
 
     fieldLabel('Account'),
     el('div', { class: CHIPROW_FLUSH, dataset: { testid: 'chiprow' } },
@@ -117,35 +121,48 @@ export function renderDebtSheet() {
     settleBlock(d)
   ].filter(Boolean));
 
-  const foot = el('div', { class: SHEET_FOOT }, [
-    el('div', {
-      class: SAVEBTN + ' bg-accent text-accent-ink ' + TAP,
-      dataset: { testid: 'savebtn', ready: '1' },
-      text: d.isNew ? 'Record debt' : 'Save',
-      onClick: async () => {
-        const row = { ...store.ui.editDebt };
-        if (!(row.person || '').trim()) { store.say('Who is it with?'); return; }
-        if (!row.principal) { store.say('Enter an amount first'); return; }
-        delete row.isNew;
-        await store.saveDebt(row);
-        store.set({ sheet: null, editDebt: null, confirmDelete: false });
-        store.say('Debt saved');
-      }
-    }),
-    d.isNew
-      ? null
-      : el('div', {
-        class: DELBTN_WIDE + ' ' + TAP
-          + (armed ? ' bg-danger text-white' : ' bg-soft text-ink2'),
-        dataset: { testid: 'delbtn', armed: armed ? '1' : '0' },
-        text: armed ? 'Tap again to delete' : 'Delete',
-        onClick: () => {
-          if (!armed) { store.set({ confirmDelete: true }); return; }
-          store.deleteDebt(d.id);
-          store.set({ sheet: null, editDebt: null, confirmDelete: false });
-        }
-      })
-  ].filter(Boolean));
+  const savebtn = el('div', {
+    class: SAVEBTN + ' bg-accent text-accent-ink ' + TAP,
+    dataset: { testid: 'savebtn', ready: '1' },
+    text: d.isNew ? 'Record' : 'Save',
+    onClick: async () => {
+      const row = { ...store.ui.editDebt };
+      if (!(row.person || '').trim()) { store.say('Who is it with?'); return; }
+      if (!row.principal) { store.say('Enter an amount first'); return; }
+      delete row.isNew;
+      await store.saveDebt(row);
+      store.set({ sheet: null, editDebt: null, confirmDelete: false });
+      store.say('Saved');
+    }
+  });
+
+  // Only the footer on screen is built: `savebtn` is a node, and appending it
+  // to a second parent would move it out of the first.
+  const foot = live
+    ? el('div', {
+      class: SHEET_FOOT + ' bg-surface border-t border-line',
+      dataset: { testid: 'sheet-foot', foot: 'keys' }
+    }, [
+      panelHead('Amount', () => store.closePad()),
+      keypad((k) => store.pressKey(k)),
+      savebtn
+    ])
+    : el('div', { class: SHEET_FOOT }, [
+      savebtn,
+      d.isNew
+        ? null
+        : el('div', {
+          class: DELBTN_WIDE + ' ' + TAP
+            + (armed ? ' bg-danger text-white' : ' bg-soft text-ink2'),
+          dataset: { testid: 'delbtn', armed: armed ? '1' : '0' },
+          text: armed ? 'Tap again to delete' : 'Delete',
+          onClick: () => {
+            if (!armed) { store.set({ confirmDelete: true }); return; }
+            store.deleteDebt(d.id);
+            store.set({ sheet: null, editDebt: null, confirmDelete: false });
+          }
+        })
+    ].filter(Boolean));
 
   return sheetWith(d, body, foot);
 }
@@ -156,7 +173,10 @@ function sheetWith(d, body, foot) {
     el('div', { class: 'flex-none pt-[18px] px-[22px] pb-1 flex items-start gap-3' }, [
       el('div', { class: SHEET_ICON }, [icon('hand-coins', 18)]),
       el('div', {}, [
-        el('div', { class: SHEET_TITLE, text: d.isNew ? 'New debt' : d.person || 'Debt' }),
+        el('div', {
+          class: SHEET_TITLE,
+          text: d.isNew ? 'New debt or receivable' : d.person || 'Debt'
+        }),
         el('div', {
           class: SHEET_LEDE,
           text: 'Stays out of your category reports - lending is not spending.'

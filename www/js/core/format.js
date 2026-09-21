@@ -16,8 +16,14 @@ const pad = (n) => String(n).padStart(2, '0');
 export const localDate = (d = new Date()) =>
   d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 
-/** Currency. Whole thousands lose their decimals; small change keeps two. */
-export function fmt(n, cur = 'BDT') {
+/**
+ * Currency. Whole thousands lose their decimals; small change keeps two.
+ *
+ * No default currency. Every caller names one - the home currency is a setting
+ * now, so a default here could only be a guess, and a guess renders the wrong
+ * symbol in front of a right number, which is worse than no symbol at all.
+ */
+export function fmt(n, cur) {
   const neg = n < 0;
   const v = Math.abs(n);
   const s = v >= 1000
@@ -27,7 +33,7 @@ export function fmt(n, cur = 'BDT') {
 }
 
 /** Signed currency, using the typographic minus the design calls for. */
-export function signed(n, cur = 'BDT') {
+export function signed(n, cur) {
   return (n >= 0 ? '+' : MINUS) + fmt(Math.abs(n), cur);
 }
 
@@ -51,7 +57,7 @@ export function dueLabel(d, today = localDate()) {
 }
 
 /** Compact form for the donut centre, where 14px has to hold the whole month. */
-export function compact(n, cur = 'BDT') {
+export function compact(n, cur) {
   const s = SYM[cur] || '';
   if (n >= 100000) return s + (Math.round(n / 100) / 10).toFixed(1) + 'k';
   if (n >= 10000) return s + Math.round(n / 1000) + 'k';

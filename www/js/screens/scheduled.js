@@ -33,7 +33,7 @@ function row(b) {
       })
     ]),
     el('div', { class: ROW_RIGHT }, [
-      el('div', { class: ROW_AMT_BARE + ' text-danger', text: fmt(b.amount, 'BDT') }),
+      el('div', { class: ROW_AMT_BARE + ' text-danger', text: fmt(b.amount, store.homeCurrency) }),
       el('div', { class: ROW_SUB, text: (store.acct(b.account) || {}).name || '' })
     ])
   ]);

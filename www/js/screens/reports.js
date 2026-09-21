@@ -31,7 +31,6 @@ const CANVAS_BAR = 'flex-1 min-w-[3px] rounded-pill h-[var(--target,0)] '
 const TREND_BAR = 'w-[13px] rounded-pill h-[var(--target,0)] '
   + '[animation:growHeight_var(--dur-short)_var(--ease-enter)_both]';
 
-const HOME_CURRENCY = 'BDT';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -124,12 +123,12 @@ function summaryRows() {
   const perDay = totals.expense / Math.max(1, store.daysElapsed());
 
   const rows = [
-    ['Total balance', fmt(store.netWorth(), HOME_CURRENCY), ''],
-    ['Money in · ' + month, '+' + fmt(totals.income, HOME_CURRENCY), ' text-pos'],
-    ['Money out · ' + month, MINUS + fmt(totals.expense, HOME_CURRENCY), ' text-danger'],
-    ['Net this month', signed(totals.net, HOME_CURRENCY),
+    ['Total balance', fmt(store.netWorth(), store.homeCurrency), ''],
+    ['Money in · ' + month, '+' + fmt(totals.income, store.homeCurrency), ' text-pos'],
+    ['Money out · ' + month, MINUS + fmt(totals.expense, store.homeCurrency), ' text-danger'],
+    ['Net this month', signed(totals.net, store.homeCurrency),
       totals.net >= 0 ? ' text-pos' : ' text-danger'],
-    ['Average daily spend', fmt(perDay, HOME_CURRENCY), '']
+    ['Average daily spend', fmt(perDay, store.homeCurrency), '']
   ];
 
   return rows.map(([k, v, mod]) => el('div', { class: KVROW }, [
@@ -171,7 +170,7 @@ function donut(totals, sum) {
     }, [
       el('div', {
         class: 'font-ui font-bold text-[15px]/[1] text-ink tracking-[-.02em] normal-nums',
-        text: compact(sum, HOME_CURRENCY)
+        text: compact(sum, store.homeCurrency)
       }),
       el('div', {
         class: 'font-ui font-bold text-[8.5px]/[1] text-ink3 mt-1.5 uppercase '
@@ -209,7 +208,7 @@ function budgetVsActual() {
         }),
         el('div', {
           class: 'font-ui font-medium text-[11px]/[1] text-ink3 whitespace-nowrap normal-nums',
-          text: fmt(used, HOME_CURRENCY) + ' / ' + fmt(b.limit, HOME_CURRENCY)
+          text: fmt(used, store.homeCurrency) + ' / ' + fmt(b.limit, store.homeCurrency)
         })
       ]),
       el('div', {
@@ -259,9 +258,9 @@ function accountsTab() {
     ]),
     el('div', { class: ROW_RIGHT }, [
       el('div', { class: ROW_AMT, text: fmt(a.balance, a.currency) }),
-      a.currency === HOME_CURRENCY
+      a.currency === store.homeCurrency
         ? null
-        : el('div', { class: ROW_SUB, text: '≈ ' + fmt(a.homeValue, HOME_CURRENCY) }),
+        : el('div', { class: ROW_SUB, text: '≈ ' + fmt(a.homeValue, store.homeCurrency) }),
       el('div', { class: ROW_SUB, text: Math.round(a.share) + '% of total' })
     ].filter(Boolean))
   ]));
@@ -312,11 +311,11 @@ function monthsTab() {
     el('div', { class: 'flex gap-[14px]' }, [
       el('div', {
         class: 'font-ui font-semibold text-[12.5px]/[1] text-pos normal-nums',
-        text: '+' + fmt(d.income, HOME_CURRENCY)
+        text: '+' + fmt(d.income, store.homeCurrency)
       }),
       el('div', {
         class: 'font-ui font-semibold text-[12.5px]/[1] text-ink2 normal-nums',
-        text: MINUS + fmt(d.expense, HOME_CURRENCY)
+        text: MINUS + fmt(d.expense, store.homeCurrency)
       })
     ])
   ]));

@@ -72,7 +72,7 @@ export function renderAccounts() {
         id: 'a' + Date.now(),
         name: '',
         type: 'bank',
-        currency: 'BDT',
+        currency: store.homeCurrency,
         initial: 0,
         icon: 'landmark',
         brand: null,

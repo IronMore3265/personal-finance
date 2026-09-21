@@ -87,7 +87,7 @@ function addRow() {
       dataset: { testid: 'chipglyph', chip: 'ghost' }
     }, [icon('plus', 16, { weight: 2.2 })]),
     el('div', { class: ROW_BODY }, [
-      el('div', { class: ROW_TITLE, text: 'Record a debt' })
+      el('div', { class: ROW_TITLE, text: 'Record a debt or receivable' })
     ])
   ]);
 }
@@ -108,7 +108,7 @@ export function renderDebts() {
           // other side, and on Home's copy of this pair.
           class: DEBTHEAD_VALUE + (totals.owedToMe ? ' text-pos' : ' text-ink'),
           dataset: { testid: 'debthead-value' },
-          text: fmt(totals.owedToMe, 'BDT')
+          text: fmt(totals.owedToMe, store.homeCurrency)
         })
       ]),
       el('div', { class: 'flex-1 min-w-0 text-right' }, [
@@ -116,18 +116,21 @@ export function renderDebts() {
         el('div', {
           class: DEBTHEAD_VALUE + (totals.iOwe ? ' text-danger' : ' text-ink'),
           dataset: { testid: 'debthead-value' },
-          text: fmt(totals.iOwe, 'BDT')
+          text: fmt(totals.iOwe, store.homeCurrency)
         })
       ])
     ]),
+
+    // Directly under the totals it adds to, not after both lists. It is the
+    // primary action on the page, and at the bottom it sat below the Settled
+    // fold the moment anything was settled.
+    addRow(),
 
     section('Owed to you', sectionMeta(mine.length + '')),
     ...mine.map(row),
 
     section('You owe', sectionMeta(theirs.length + '')),
-    ...theirs.map(row),
-
-    addRow()
+    ...theirs.map(row)
   ];
 
   if (settled.length) {

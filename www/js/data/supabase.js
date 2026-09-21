@@ -144,6 +144,41 @@ class Supabase {
     }
   }
 
+  /**
+   * Set a new password on the session this device already holds.
+   *
+   * This is the whole of "forgot password" in the app: there is no recovery
+   * mail and no code, because the phone is already carrying proof that it was
+   * signed in, and the app lock is what re-confirms who is holding it. The
+   * reply is a fresh user object rather than a token pair, so the session on
+   * hand stays valid and is simply kept.
+   *
+   * Goes through token(), so an access token that has aged out is refreshed
+   * first rather than failing the change.
+   */
+  async updatePassword(password) {
+    const token = await this.token();
+    if (!token) throw new AuthError('Not signed in', 401);
+
+    const res = await fetch(URL_BASE + '/auth/v1/user', {
+      method: 'PUT',
+      headers: {
+        apikey: PUBLISHABLE_KEY,
+        Authorization: 'Bearer ' + token,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ password })
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new AuthError(
+        json.error_description || json.msg || json.message || 'Could not change the password',
+        res.status
+      );
+    }
+    return json;
+  }
+
   /* ---------------- PostgREST ---------------- */
 
   async rest(path, options = {}) {
@@ -177,6 +212,32 @@ class Supabase {
   }
 
   /**
+   * Give every row in a batch the same keys.
+   *
+   * PostgREST refuses a bulk write whose objects do not all carry an identical
+   * key set - `{"code":"PGRST102","message":"All object keys must match"}` -
+   * because it builds one INSERT with one column list. Our rows come straight
+   * out of the local tables, where an absent optional column is simply an
+   * absent key: an account has `icon` or `brand` or `color`, rarely all three.
+   * So the very first push of a bootstrap was rejected whole, which is why
+   * nothing had ever reached the server.
+   *
+   * The union of the keys, with `null` for the ones a row does not have. Null
+   * is the honest value: these are whole rows, not patches, so a key this row
+   * lacks is a column this row has no value for. Only nullable columns can go
+   * missing this way - a NOT NULL column always carries its key.
+   */
+  static square(rows) {
+    const keys = new Set();
+    for (const row of rows) for (const k of Object.keys(row)) keys.add(k);
+    return rows.map(row => {
+      const out = {};
+      for (const k of keys) out[k] = row[k] === undefined ? null : row[k];
+      return out;
+    });
+  }
+
+  /**
    * Insert or update rows, keyed on the composite primary key.
    *
    * `on_conflict` has to name both columns: every install seeds its own rows
@@ -187,7 +248,7 @@ class Supabase {
     return this.rest(table + '?on_conflict=' + conflictKey, {
       method: 'POST',
       headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify(rows)
+      body: JSON.stringify(Supabase.square(rows))
     });
   }
 }

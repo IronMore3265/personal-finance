@@ -74,12 +74,59 @@ button { font-family: var(--ui); border: none; background: none; padding: 0; col
 }
 
 /* ---------- scroll region + motion ---------- */
+
+/* The box both panes share. #scroll sits in it normally and keeps the flex slot
+   the shell used to give it directly; #peek is laid over the top of it and only
+   becomes visible while a swipe is in flight. Clipped, so a pane parked a whole
+   width off to the side is out of sight rather than somewhere to scroll to. */
+#pager {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#pager > #scroll { flex: 1; min-height: 0; }
+
+/* The neighbouring tab, while the finger is still deciding. It is a preview:
+   it does not scroll on its own, and it never takes a tap.
+
+   Addressed by id rather than by its class so it beats .scroll below on
+   overflow whatever order the two end up in - a preview that could be scrolled
+   sideways out from under the gesture dragging it would be its own bug. */
+#pager > #peek {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  visibility: hidden;
+}
+
 .scroll {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 22px calc(112px + var(--safe-b));
   -webkit-overflow-scrolling: touch;
+  /* Vertical is the browser's, sideways is ours.
+
+     Without this the region is `touch-action: auto`, and the browser reserves
+     the right to pan either axis until it has seen enough of the gesture to
+     decide. On a touch screen it makes that call on the very first move and
+     takes the whole pointer sequence with it: pointerdown, one pointermove,
+     then pointercancel - so core/swipe.js saw the gesture die a pixel after it
+     had committed to the sideways axis, and no swipe ever reached a tab. A
+     mouse is never arbitrated this way, which is why the browser tests, which
+     drive the gesture with page.mouse, passed against a feature that did not
+     work on a device at all.
+
+     Naming the axis up front settles it before the finger moves: the browser
+     keeps vertical scrolling, sideways is never claimed, and the pointer
+     stream survives. The chip rows inside are unaffected - a pan that starts
+     on a row that actually overflows is handled by that row, which is the
+     nearest scroller that can take it, and never reaches this rule. */
+  touch-action: pan-y;
 }
 
 /* Pattern B - push. The whole surface moves in lockstep, no per-element stagger. */
@@ -104,6 +151,34 @@ button { font-family: var(--ui); border: none; background: none; padding: 0; col
 }
 
 .stagger > * { animation: riseIn var(--dur-short) var(--ease-enter) both; }
+
+/* Pattern B, at the size of a list. The Activity filters slide their ledger
+   across the way a tab change slides a whole screen, so the frame the panes
+   move in has to clip them and hold a height while they are both inside it.
+   Only set while a slide is running: at rest the list is a plain block that
+   grows with its own content. */
+.slide-view {
+  position: relative;
+  /*
+   * `clip` rather than `hidden`, with room to spare.
+   *
+   * A plain clip cuts flush against the frame, and the first thing at the left
+   * edge of a ledger row is a category chip wearing its colour as a 3px outset
+   * ring (iconChip) - which sits outside the row's box. Cutting that flat left
+   * a 3px strip of bare surface running down the whole column for as long as
+   * the slide lasted: in light mode, a white vertical line at the left of the
+   * list that appeared on every filter change and vanished when it landed.
+   *
+   * This is the same bug ui/styles.js records having already fixed once, on
+   * ROW_TAP. It came back here because the clip moved up to the frame.
+   *
+   * 4px clears the widest ring. The margin also lets 4px of a parked pane show
+   * past the frame, which lands in the scroll region's own 22px gutter and is
+   * clipped again by it.
+   */
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
@@ -193,6 +268,32 @@ button { font-family: var(--ui); border: none; background: none; padding: 0; col
   from { opacity: 0; transform: scale(.88); }
   to   { opacity: 1; transform: scale(1); }
 }
+
+/* ---------- the gates ---------- */
+
+/*
+ * The lock screen and the sign-in screen.
+ *
+ * Over everything, including the header and the nav bar, because a gate that
+ * left the chrome showing would be showing which tab you were on and what the
+ * balance header said - which is most of what the lock is for. Same geometry
+ * as .boot below, one layer above it, and empty in the tree when neither is
+ * up so it costs nothing the rest of the time.
+ */
+#gate:empty { display: none; }
+
+#gate {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  padding: calc(env(safe-area-inset-top) + 24px) 26px calc(24px + var(--safe-b));
+  overflow-y: auto;
+}
+
+.gate--enter { animation: fadeIn var(--dur-micro) ease; }
 
 /* ---------- boot ---------- */
 .boot {

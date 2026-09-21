@@ -3,8 +3,16 @@
 
 export const TODAY = '2026-08-28';
 
+/*
+ * The offline floor for conversion, in BDT per unit.
+ *
+ * A first run has this and nothing else; data/fx.js overlays a fetched rate
+ * when there is signal, and Settings can override it by hand. See store.rates.
+ */
 export const RATES = { BDT: 1, USD: 122 };
 export const SYM = { BDT: '৳', USD: '$' };
+/** What the currency pickers offer, in the order they show it. */
+export const CURRENCIES = ['BDT', 'USD'];
 
 // Sentence case: v4 sets these beneath the account name as a quiet caption,
 // not as an all-caps badge.

@@ -21,7 +21,7 @@ import { icon } from '../ui/icons.js';
 import { dateLabel } from '../ui/datepicker.js';
 import { keypad, panelHead } from '../ui/keypad.js';
 import { accountPicker, categoryPicker } from './pickers.js';
-import { SYM } from '../data/seed.js';
+import { SYM, CURRENCIES } from '../data/seed.js';
 import {
   CHIPROW_FLUSH, TAP, MINILABEL, SHEET, SHEET_HEAD, SHEET_BODY, SHEET_FOOT, SAVEBTN
 } from '../ui/styles.js';
@@ -55,6 +55,7 @@ export function saveButtonLabel(total) {
  */
 const closePanels = (patch) => ({
   keypadOpen: false,
+  padTarget: null,
   entryFocusItem: null,
   ...patch
 });
@@ -163,7 +164,7 @@ function amountBlock() {
           ? 'shadow-[inset_0_-2px_0_0_var(--accent)]'
           : 'shadow-[inset_0_0_0_1.5px_transparent]')
         + (derived ? '' : ' ' + TAP),
-      dataset: { testid: 'amount-row' },
+      dataset: { testid: 'amount-row', pad: 'open' },
       onClick: derived ? undefined : () => store.set({ keypadOpen: true, entryFocusItem: null })
     }, [
       el('div', {
@@ -185,7 +186,7 @@ function amountBlock() {
         text: 'Sum of ' + entryItems.length + ' items'
       })
       : el('div', { class: 'flex gap-1.5 justify-center mt-[14px]' },
-        ['BDT', 'USD'].map(c =>
+        CURRENCIES.map(c =>
           chip(c, store.ui.entryCurrency === c, () => store.set({ entryCurrency: c }))
         ))
   ];
@@ -236,7 +237,7 @@ function itemList() {
     el('div', { class: MINILABEL, text: 'Items' }),
     el('div', {
       class: ITEMADD + ' ' + TAP,
-      dataset: { testid: 'itemadd' },
+      dataset: { testid: 'itemadd', pad: 'open' },
       onClick: () => store.addItem()
     }, [icon('plus', 13, { weight: 2.2 }), el('span', { text: 'Add item' })])
   ]);
@@ -267,6 +268,7 @@ function itemList() {
     el('div', {
       id: 'item-amt-' + it.id,
       class: ITEMROW_AMT + ' ' + TAP,
+      dataset: { pad: 'open' },
       text: (Number(it.amount) || 0).toLocaleString('en-US'),
       onClick: () => store.set({
         entryFocusItem: it.id,
@@ -362,7 +364,7 @@ export function renderAddSheet() {
               + 'placeholder:text-ink3',
             value: store.ui.entryNote,
             placeholder: 'optional',
-            onFocus: () => store.set({ keypadOpen: false, dateOpen: false, entryFocusItem: null }),
+            onFocus: () => store.set(closePanels({ dateOpen: false })),
             onInput: (e) => store.set({ entryNote: e.target.value }, true)
           })
         ])
@@ -389,7 +391,7 @@ export function renderAddSheet() {
       dataset: { testid: 'sheet-foot', foot: 'keys' }
     }, [
       panelHead(store.ui.entryFocusItem ? 'Item amount' : 'Amount',
-        () => store.set({ keypadOpen: false, entryFocusItem: null })),
+        () => store.closePad()),
       keypad((k) => store.pressKey(k)),
       savebtn
     ]);

@@ -47,6 +47,47 @@ export function keypad(onKey) {
   );
 }
 
+/**
+ * The tappable amount, for a sheet that borrows the keypad.
+ *
+ * Field-sized rather than the add sheet's 50px hero: on those sheets the amount
+ * is one row among several under its own fieldLabel, and this stands in the
+ * slot an <input> used to occupy, so the rest of the layout is undisturbed. It
+ * keeps the add sheet's two testids and its lime under-edge, so `patchAmount()`
+ * in the shell reaches it without knowing which sheet it is in.
+ *
+ * @param {string} text  the figure to show, already formatted
+ * @param {string} expr  the running expression, '' when there is nothing to show
+ * @param {boolean} live whether the keys are up and driving this field
+ * @param {() => void} onTap
+ */
+export function amountField(text, expr, live, onTap) {
+  return el('div', {
+    class: 'w-full bg-soft rounded-box py-3 px-[13px] '
+      + 'transition-shadow duration-[180ms] ease-linear '
+      + (live
+        ? 'shadow-[inset_0_0_0_1.5px_var(--accent)]'
+        : 'shadow-[inset_0_0_0_1.5px_transparent]')
+      + ' ' + TAP,
+    dataset: { testid: 'amount-row', pad: 'open' },
+    onClick: onTap
+  }, [
+    // Reserves its line box whether or not there is anything in it, so the
+    // figure below does not jump the moment an operator is pressed.
+    el('div', {
+      class: 'min-h-4 font-ui font-medium text-[11.5px]/[16px] text-ink3 '
+        + 'tracking-[.01em] normal-nums',
+      dataset: { testid: 'amount-expr' },
+      text: expr
+    }),
+    el('div', {
+      class: 'font-ui font-bold text-[20px]/[1.2] text-ink normal-nums',
+      dataset: { testid: 'amount-val' },
+      text
+    })
+  ]);
+}
+
 export function panelHead(label, onDone) {
   return el('div', { class: 'flex items-center justify-between pt-0 px-0.5 pb-2.5' }, [
     el('div', {

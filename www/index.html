@@ -14,7 +14,14 @@
   <div id="app">
     <!-- status bar is inserted by the shell so it can sit above the header -->
     <div id="header"></div>
-    <div id="scroll" class="scroll"></div>
+    <!-- Two panes, one box. #scroll is the screen you are on and owns the
+         vertical scroll; #peek holds the neighbouring tab while a sideways
+         swipe is in flight, so the next screen travels in under the finger
+         rather than appearing after it. -->
+    <div id="pager">
+      <div id="scroll" class="scroll"></div>
+      <div id="peek" class="scroll scroll--peek" aria-hidden="true"></div>
+    </div>
     <div id="overlay"></div>
     <div id="toast"></div>
     <div id="nav"></div>
@@ -23,6 +30,10 @@
     <div id="boot" class="boot">
       <div class="boot__mark">Paisa</div>
     </div>
+
+    <!-- The two gates, drawn over everything including the bar and the nav.
+         Empty unless one of them is up; see core/lock.js and screens/signin.js. -->
+    <div id="gate"></div>
   </div>
 
   <script type="module" src="js/app.js"></script>

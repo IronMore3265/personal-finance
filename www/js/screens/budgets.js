@@ -10,7 +10,6 @@ import { renderDebts } from './debts.js';
 import { ROW_BODY, ROW_SUB, ELLIP, TAP } from '../ui/styles.js';
 
 
-const HOME_CURRENCY = 'BDT';
 
 /* Recipes used more than once inside this screen. */
 const PCTTAG = 'flex-none font-ui font-bold text-[11px]/[1] text-accent-ink '
@@ -34,7 +33,8 @@ function tabs() {
     tab('Goals', store.ui.budgetSeg === 'goals', () => store.set({ budgetSeg: 'goals' })),
     // Debts answer the same question as the other two - how am I doing against
     // a number - so they share the screen rather than claiming a nav slot.
-    tab('Debts', store.ui.budgetSeg === 'debts', () => store.set({ budgetSeg: 'debts' }))
+    tab('Debts & receivables', store.ui.budgetSeg === 'debts',
+      () => store.set({ budgetSeg: 'debts' }))
   ]);
 }
 
@@ -60,11 +60,11 @@ function budgetList() {
       el('div', { class: 'flex items-baseline gap-2 mt-[13px] whitespace-nowrap' }, [
         el('div', {
           class: 'font-ui font-extrabold text-[34px]/[1] text-ink tracking-[-.045em] normal-nums',
-          text: fmt(spent, HOME_CURRENCY)
+          text: fmt(spent, store.homeCurrency)
         }),
         el('div', {
           class: 'font-ui font-medium text-[12px]/[1] text-ink3 normal-nums',
-          text: 'of ' + fmt(total, HOME_CURRENCY)
+          text: 'of ' + fmt(total, store.homeCurrency)
         })
       ])
     ]),
@@ -73,7 +73,7 @@ function budgetList() {
 
   const foot = el('div', { class: TRACKFOOT }, [
     el('div', { text: daysLeftText() }),
-    el('div', { text: fmt(Math.max(0, total - spent), HOME_CURRENCY) + ' left' })
+    el('div', { text: fmt(Math.max(0, total - spent), store.homeCurrency) + ' left' })
   ]);
 
   const rows = store.db.budgets.map(b => {
@@ -97,12 +97,12 @@ function budgetList() {
               + 'rounded-pill py-1 px-2 normal-nums'
           }, [
             icon('alert', 10, { weight: 2.4 }),
-            'Over by ' + fmt(used - b.limit, HOME_CURRENCY)
+            'Over by ' + fmt(used - b.limit, store.homeCurrency)
           ])
           : null,
         el('div', {
           class: 'font-ui font-bold text-[14px]/[1] text-ink flex-none normal-nums',
-          text: fmt(used, HOME_CURRENCY)
+          text: fmt(used, store.homeCurrency)
         })
       ].filter(Boolean)),
       bar(p, over ? 'var(--danger)' : category.color, true),
@@ -110,10 +110,10 @@ function budgetList() {
         class: 'flex justify-between gap-2 mt-[9px] font-ui font-medium '
           + 'text-[10.5px]/[1] text-ink3 whitespace-nowrap normal-nums'
       }, [
-        el('div', { text: p + '% of ' + fmt(b.limit, HOME_CURRENCY) }),
+        el('div', { text: p + '% of ' + fmt(b.limit, store.homeCurrency) }),
         el('div', {
           class: over ? 'text-danger font-semibold' : '',
-          text: over ? 'nothing left' : fmt(b.limit - used, HOME_CURRENCY) + ' left'
+          text: over ? 'nothing left' : fmt(b.limit - used, store.homeCurrency) + ' left'
         })
       ])
     ]);
@@ -135,8 +135,17 @@ function goalList() {
     const add = (label, amount, lime) => el('div', {
       class: ADDBTN + ' ' + TAP
         + (lime ? ' bg-accent text-accent-ink' : ' bg-soft text-ink'),
+      dataset: { testid: 'goal-add' },
       onClick: () => store.addToGoal(g, amount)
     }, [icon('plus', 11, { weight: 2.6 }), label]);
+
+    // The two pills are the amounts you save most often; this is the rest of
+    // them. It opens the keypad rather than guessing another round number.
+    const custom = el('div', {
+      class: ADDBTN + ' ' + TAP + ' bg-soft text-ink',
+      dataset: { testid: 'goal-custom' },
+      onClick: () => store.set({ sheet: 'goal', goalAdd: store.newGoalAdd(g) })
+    }, [icon('pencil', 11, { weight: 2.6 }), 'Custom']);
 
     return el('div', { class: 'py-4 border-b border-line' }, [
       el('div', { class: 'flex items-center gap-3' }, [
@@ -150,21 +159,22 @@ function goalList() {
             class: 'font-ui font-medium text-[11px]/[1] text-ink3 mt-1.5 '
               + 'tracking-[.01em] normal-nums',
             text: 'By ' + dayName(g.deadline) + ' ' + g.deadline.slice(0, 4) + ' · ' +
-              fmt(Math.max(0, g.target - g.current), HOME_CURRENCY) + ' to go'
+              fmt(Math.max(0, g.target - g.current), store.homeCurrency) + ' to go'
           })
         ]),
         el('div', { class: 'text-right flex-none' }, [
           el('div', {
             class: 'font-ui font-bold text-[15px]/[1] text-ink whitespace-nowrap normal-nums',
-            text: fmt(g.current, HOME_CURRENCY)
+            text: fmt(g.current, store.homeCurrency)
           }),
-          el('div', { class: ROW_SUB, text: 'of ' + fmt(g.target, HOME_CURRENCY) })
+          el('div', { class: ROW_SUB, text: 'of ' + fmt(g.target, store.homeCurrency) })
         ])
       ]),
       el('div', { class: 'flex items-center gap-[9px] mt-[13px]' }, [
         bar(p, 'var(--accent)', true, 'flex-1 m-0'),
         add('1K', 1000, false),
-        add('5K', 5000, true)
+        add('5K', 5000, true),
+        custom
       ])
     ]);
   });

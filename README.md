@@ -134,9 +134,12 @@ disturb the scroll, and a tap in the add sheet does not reset the sideways chip
 rows or replay the slide-up. A keypad tap is faster still: three nodes, written
 directly. The only two passes that build from scratch are the two meant to be
 seen arriving — a different screen, and a different sheet — which is where the
-push, the stagger and the slide-up live. Balances are memoised on a ledger
-revision, because Home draws nine sparkline samples per account and each one is
-a full scan.
+push, the stagger and the slide-up live. A screen reached by swiping is neither:
+`#peek` built it during the drag and the user watched it travel, so the landing
+moves those nodes into `#scroll` rather than building the same tree again and
+staggering it in over an arrival that has visibly finished. Balances are memoised
+on a ledger revision, because Home draws nine sparkline samples per account and
+each one is a full scan.
 
 **Storage writes.** `repo` now covers the whole model: transactions (including
 update and delete), line items, categories, accounts, debts and recurring
@@ -162,18 +165,57 @@ primary key is `(user_id, id)` — every install seeds its own `a1` and `c1`, so
 a single-column key would collide between two accounts. The publishable key in
 the source is meant to be public; it grants nothing without a session.
 
+**Signing in, and the app lock.** `screens/signin.js` draws both gates into
+`#gate`, a layer over the whole shell — over the header and the nav bar too,
+since a gate that left the chrome showing would be showing which tab you were
+on and what the balance said. A first run meets the sign-in screen and can
+wave it past; that choice is remembered per device, in `localStorage` rather
+than in the settings table, because skipping it on your phone should not skip
+it on a second one. Remember me keeps the address and only the address — the
+password is never written anywhere, which `tests/gate.spec.js` asserts by
+scanning the whole of `localStorage` for it.
+
+The app lock (`core/lock.js`) is off until it is turned on in Settings, and
+turning it on asks for a fingerprint first so the sensor is known to answer
+before it starts standing between you and the ledger. It re-locks whenever the
+app leaves the foreground. On Android the biometric prompt itself backgrounds
+the WebView, which fires that very listener, so the prompt is guarded against
+re-triggering itself.
+
+**Forgotten passwords** are answered by the lock rather than by an email.
+Supabase sets a password on an authenticated session and the phone already
+holds one, so a fingerprint is enough to authorise the change — no recovery
+mail, no code, no deep link back into the app. The limit is honest and the
+screen says so: biometrics prove who is holding the phone, not who owns the
+account, so this only works while the device still has a session. Signed out,
+reinstalled or on a second phone, there is nothing to re-authorise.
+
+**Home currency.** One setting, `homeCurrency`, decides what every total is
+added up into; each transaction keeps the amount and currency it was entered
+in, and nothing in the ledger moves when it changes. Exactly two functions
+convert — `store.homeVal` for a transaction and `store.toHome` for a plain
+amount — so there is one place to look. `data/fx.js` fetches USD/BDT from
+open.er-api.com (no key, CORS open, quotes BDT — the obvious alternative,
+Frankfurter, is ECB data and the ECB does not publish a BDT rate). It runs
+beside the app and is never awaited: `data/seed.js` holds an offline floor,
+the last fetched rate persists, and Settings takes one typed by hand, which
+stands until you ask for a new one.
+
 ## What works
 
 Log a transaction on the numpad, entering it as arithmetic if that is how the
-bill arrived — `240 × 2 + 800` · break one transaction into line items · pick
+bill arrived — `240 × 2 + 800`, on a scheduled expense and a debt as much as on
+a transaction · break one transaction into line items · pick
 any date · tap any transaction to edit or delete it · pick accounts from
 type-grouped chips rather than one long strip · give categories and accounts
-their own icon and colour · track money lent and owed · run subscriptions that
+their own icon and colour · track debts and receivables · run subscriptions that
 post themselves, or wait for a tap, or ask for the amount · mark one due with
-the lime tick · contribute to a goal · paste an SMS and run the rule table,
+the lime tick · contribute a round 1K or 5K to a goal, or any amount you like ·
+paste an SMS and run the rule table,
 either straight into the ledger or as a draft the add sheet hands you to check ·
-filter and search activity · swipe sideways between tabs and between the
-activity filters · export CSV · back up the database · flip light/dark.
+filter and search activity · swipe sideways between tabs · sign in to back the
+ledger up · lock the app behind a fingerprint · read every total in BDT or USD ·
+export CSV · back up the database · flip light/dark.
 
 ## Design fidelity
 
@@ -261,6 +303,34 @@ Carried over from earlier passes, and still fixed here:
   bar and the FAB painted over the add and SMS sheets — the Save button was
   unreachable. The scrim and sheet now carry an explicit `z-index`, and the toast
   outranks the sheet so a save is still confirmed.
+- **Sync had never once worked.** Every table in the project was empty and
+  `auth.users` had no rows at all. PostgREST builds one INSERT with one column
+  list for a bulk write, so it rejects a batch whose objects do not all carry
+  the same keys — `{"code":"PGRST102","message":"All object keys must match"}`.
+  Local rows do not satisfy that: an account has `icon` or `brand` or `color`
+  and rarely all three, and an absent optional column is an absent key. So the
+  accounts batch of the very first bootstrap was rejected whole and every push
+  behind it stayed queued forever. `Supabase.square()` now sends the union of
+  the keys, with `null` where a row has none. The stubbed tests never caught
+  it because the stub answers 201 to anything; there is a live round trip in
+  `tests/sync.spec.js` now, gated on `PAISA_TEST_EMAIL`.
+- **A white line down the left of the activity list.** `.slide-view` clipped
+  flush while a filter slid, and the first thing at the left edge of a ledger
+  row is a category chip wearing its colour as a 3px outset ring, which sits
+  outside the row's box. Cutting that flat exposed a strip of bare surface for
+  as long as the slide lasted. Measured on the device: the chip's left edge sat
+  at x=55 while sliding and x=48 once settled. `overflow: clip` with a 4px
+  `overflow-clip-margin` gives the ring room. `ui/styles.js` records the same
+  bug being fixed once before, on `ROW_TAP` — it came back when the clip moved
+  up to the frame.
+- **The test suite was reading the live exchange rate.** `data/fx.js` fetches
+  at boot, so once the home currency landed every money figure in every
+  screenshot moved with the actual market — a run today differed from one last
+  week, and one with no network from one with. Most screens drifted under the
+  1% screenshot tolerance and stayed green, which made the three that tipped
+  over look like unrelated regressions in the add and SMS sheets.
+  `tests/fixtures.js` now answers the rate service with the same figure
+  `data/seed.js` carries, so the money in a test is the money in the seed.
 - **`npm run build:android` never ran Gradle.** `cd android && gradlew.bat` did
   not resolve, and because the failure came after `&&` the script still exited 0
   — so it looked like a successful build that quietly shipped the previous APK.
@@ -271,8 +341,8 @@ Carried over from earlier passes, and still fixed here:
 Carried over from the prototype, still undecided:
 
 - Transfers: their own flow, or a third type on the same sheet?
-- Per-account budgets as well as per-category?
-- Should the USD account show in BDT on Home, or in its own currency?
+- Per-account budgets as well as per-category? (Home currency is settled: an
+  account row shows its own currency, every total shows the home one.)
 
 ## Not done yet
 
@@ -283,10 +353,14 @@ Carried over from the prototype, still undecided:
 - Budgets are still seeded; categories and accounts are now editable, budgets
   are not.
 - Transfers are a third tab on the add sheet that currently just says so.
-- **Email confirmation is on** in the Supabase project, and the built-in SMTP
-  is rate-limited to a handful of messages an hour. Fine for the one signup a
-  personal app needs; if you ever want more, set a custom SMTP provider in
-  Supabase → Authentication → Emails, or turn confirmation off there.
+- **No email is sent, ever.** `mailer_autoconfirm` is on, so creating an
+  account returns a session immediately. That is deliberate rather than
+  provisional: without custom SMTP, Supabase's built-in mailer refuses to
+  deliver to any address that is not on the project team, so a confirmation
+  step would have worked for the project owner and silently failed for
+  everyone else. Forgotten passwords are answered by the app lock instead —
+  see below. Wiring real SMTP (Brevo, Resend) would let confirmation be turned
+  back on; nothing in the app depends on it either way.
 - Sync has no realtime channel: it runs on launch, ~2.5s after a write, and
   when the device comes back online. Two phones editing the same row within
   that window resolve last-write-wins.

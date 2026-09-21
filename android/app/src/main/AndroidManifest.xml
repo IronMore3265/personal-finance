@@ -38,4 +38,13 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+        The app lock. USE_BIOMETRIC is the API 28+ permission; USE_FINGERPRINT
+        covers 24-27, which minSdkVersion still admits. Both are install-time
+        permissions, so there is no runtime request to make - and the plugin
+        declares neither itself, so they have to be named here.
+    -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
 </manifest>

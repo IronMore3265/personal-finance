@@ -9,10 +9,9 @@ import { chip, txnRow, groupByDay } from '../ui/components.js';
 import { CHIPROW, TAP } from '../ui/styles.js';
 
 
-const HOME_CURRENCY = 'BDT';
 
-// The order lives in the store, beside SCREEN_ORDER: it is what a sideways
-// swipe walks, so the shell reads it too. Only the faces are the screen's.
+// The order lives in the store, beside SCREEN_ORDER: it is what gives a tap its
+// direction, so the shell reads it too. Only the faces are the screen's.
 const FILTER_LABEL = {
   all: 'All',
   expense: 'Expense',
@@ -46,17 +45,34 @@ function searchRow() {
   ]);
 }
 
-export function renderActivity() {
-  const list = store.filteredTxns();
+/** The chip strip's contents, so the shell can relight them on their own. */
+export function filterChips() {
+  return FILTERS.map(id =>
+    chip(FILTER_LABEL[id], store.ui.filter === id, () => store.setFilter(id))
+  );
+}
+
+/**
+ * One filter's ledger, as a finished pane.
+ *
+ * Built whole and handed over rather than patched into the one on screen: a
+ * filter change slides the new list in the way a tab change slides a new
+ * screen in, and you cannot slide something that is still being written. The
+ * shell builds every pane it is going to show before any of them moves.
+ *
+ * @param {string} [filter] defaults to the chip actually selected
+ */
+export function renderLedger(filter) {
+  const list = store.filteredTxns(filter);
   const sum = list.reduce(
     (s, t) => s + (t.type === 'income' ? store.homeVal(t) : -store.homeVal(t)), 0
   );
   const groups = groupByDay(list, store.today);
 
-  // Everything below the chips is one region, so the shell can push it across
+  // Everything below the chips is one pane, so the shell can slide it across
   // on a filter change without dragging the search box - and the chip that was
   // just tapped - along with it. A tab strip stays put above its pages.
-  const ledger = el('div', { dataset: { testid: 'activity-list' } }, [
+  const ledger = el('div', { dataset: { role: 'ledger' } }, [
     el('div', {
       class: 'flex justify-between items-center gap-2 py-3 border-t border-b '
         + 'border-line mb-1.5'
@@ -69,7 +85,7 @@ export function renderActivity() {
       el('div', {
         class: 'font-ui font-bold text-[13px]/[1] whitespace-nowrap normal-nums '
           + (sum >= 0 ? 'text-pos' : 'text-danger'),
-        text: signed(sum, HOME_CURRENCY)
+        text: signed(sum, store.homeCurrency)
       })
     ]),
 
@@ -83,7 +99,7 @@ export function renderActivity() {
         el('div', {
           class: 'font-ui font-semibold text-[10.5px]/[1] whitespace-nowrap '
             + 'normal-nums ' + (g.sum >= 0 ? 'text-pos' : 'text-danger'),
-          text: signed(g.sum, HOME_CURRENCY)
+          text: signed(g.sum, store.homeCurrency)
         })
       ]),
       ...g.items.map(txnRow)
@@ -98,15 +114,19 @@ export function renderActivity() {
       : null
   ].filter(Boolean));
 
+  return ledger;
+}
+
+export function renderActivity(filter) {
   return [
     searchRow(),
 
-    el('div', { class: CHIPROW, dataset: { testid: 'chiprow' } },
-      FILTERS.map(id =>
-        chip(FILTER_LABEL[id], store.ui.filter === id, () => store.setFilter(id))
-      )
-    ),
+    el('div', { class: CHIPROW, dataset: { testid: 'chiprow' } }, filterChips()),
 
-    ledger
+    // The frame the panes move inside. It carries the testid because it is
+    // what stays put: the pane within it is replaced wholesale every time the
+    // filter changes, and anything holding a reference across that would be
+    // holding the list that just left.
+    el('div', { dataset: { testid: 'activity-list' } }, [renderLedger(filter)])
   ];
 }

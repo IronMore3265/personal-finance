@@ -10,6 +10,8 @@ import { store } from '../core/store.js';
 import { chip, fieldLabel, toggle } from '../ui/components.js';
 import { icon } from '../ui/icons.js';
 import { dateLabel } from '../ui/datepicker.js';
+import { keypad, panelHead, amountField } from '../ui/keypad.js';
+import * as calc from '../core/calc.js';
 import { accountPicker, categoryPicker } from './pickers.js';
 import {
   CHIPROW_FLUSH, TAP, SHEET, SHEET_BODY, SHEET_FOOT, SHEET_TITLE,
@@ -35,6 +37,7 @@ export function renderRecurringSheet() {
   const r = store.ui.editRecurring;
   if (!r) return el('div', { class: SHEET });
   const armed = store.ui.confirmDelete;
+  const live = store.ui.keypadOpen && store.ui.padTarget === 'recurring';
 
   const body = el('div', { class: SHEET_BODY, dataset: { testid: 'sheet-body' } }, [
     fieldLabel('Name'),
@@ -47,14 +50,16 @@ export function renderRecurringSheet() {
     }),
 
     fieldLabel('Amount'),
-    el('input', {
-      id: 'rec-amount',
-      class: FIELD + ' font-bold text-[20px]',
-      inputmode: 'decimal',
-      value: String(r.amount || ''),
-      placeholder: '0',
-      onInput: (e) => { store.ui.editRecurring.amount = parseFloat(e.target.value || '0') || 0; }
-    }),
+    // The app's own keypad rather than the OS keyboard, so a bill that arrives
+    // as arithmetic can be entered as arithmetic - the same reasoning that put
+    // the keys on the add sheet.
+    amountField(
+      live ? calc.displayText(store.ui.entryExpr, store.ui.entryAmount, store.ui.entryValue)
+        : (r.amount ? calc.trim(r.amount) : '0'),
+      live ? calc.exprText(store.ui.entryExpr, store.ui.entryAmount) : '',
+      live,
+      () => store.openPad('recurring', r.amount)
+    ),
 
     // The same grouped account row and folding category grid the add sheet
     // uses. This screen had a flat strip of all nine accounts and all thirteen
@@ -121,35 +126,50 @@ export function renderRecurringSheet() {
     ])
   ]);
 
-  const foot = el('div', { class: SHEET_FOOT }, [
-    el('div', {
-      class: SAVEBTN + ' bg-accent text-accent-ink ' + TAP,
-      dataset: { testid: 'savebtn', ready: '1' },
-      text: r.isNew ? 'Add scheduled expense' : 'Save',
-      onClick: async () => {
-        const row = { ...store.ui.editRecurring };
-        if (!(row.name || '').trim()) { store.say('Give it a name first'); return; }
-        if (!row.amount && !row.variable) { store.say('Enter an amount first'); return; }
-        delete row.isNew;
-        await store.saveRecurring(row);
-        store.set({ sheet: null, editRecurring: null, confirmDelete: false });
-        store.say(row.name + ' saved');
-      }
-    }),
-    r.isNew
-      ? null
-      : el('div', {
-        class: DELBTN_WIDE + ' ' + TAP
-          + (armed ? ' bg-danger text-white' : ' bg-soft text-ink2'),
-        dataset: { testid: 'delbtn', armed: armed ? '1' : '0' },
-        text: armed ? 'Tap again to delete' : 'Delete',
-        onClick: () => {
-          if (!armed) { store.set({ confirmDelete: true }); return; }
-          store.deleteRecurring(r.id);
-          store.set({ sheet: null, editRecurring: null, confirmDelete: false });
-        }
-      })
-  ].filter(Boolean));
+  const savebtn = el('div', {
+    class: SAVEBTN + ' bg-accent text-accent-ink ' + TAP,
+    dataset: { testid: 'savebtn', ready: '1' },
+    text: r.isNew ? 'Add scheduled expense' : 'Save',
+    onClick: async () => {
+      const row = { ...store.ui.editRecurring };
+      if (!(row.name || '').trim()) { store.say('Give it a name first'); return; }
+      if (!row.amount && !row.variable) { store.say('Enter an amount first'); return; }
+      delete row.isNew;
+      await store.saveRecurring(row);
+      store.set({ sheet: null, editRecurring: null, confirmDelete: false });
+      store.say(row.name + ' saved');
+    }
+  });
+
+  // Two footers, the way the add sheet has them: the keys over the save button
+  // while a number is being entered, or the save button and Delete. Only the
+  // one on screen is built - `savebtn` is a node, and appending it to a second
+  // parent would move it out of the first.
+  const foot = live
+    ? el('div', {
+      class: SHEET_FOOT + ' bg-surface border-t border-line',
+      dataset: { testid: 'sheet-foot', foot: 'keys' }
+    }, [
+      panelHead('Amount', () => store.closePad()),
+      keypad((k) => store.pressKey(k)),
+      savebtn
+    ])
+    : el('div', { class: SHEET_FOOT }, [
+      savebtn,
+      r.isNew
+        ? null
+        : el('div', {
+          class: DELBTN_WIDE + ' ' + TAP
+            + (armed ? ' bg-danger text-white' : ' bg-soft text-ink2'),
+          dataset: { testid: 'delbtn', armed: armed ? '1' : '0' },
+          text: armed ? 'Tap again to delete' : 'Delete',
+          onClick: () => {
+            if (!armed) { store.set({ confirmDelete: true }); return; }
+            store.deleteRecurring(r.id);
+            store.set({ sheet: null, editRecurring: null, confirmDelete: false });
+          }
+        })
+    ].filter(Boolean));
 
   return sheetWith(r, body, foot);
 }

@@ -90,6 +90,98 @@ export function zoomIn(host, depth) {
   host.__zoom = setTimeout(() => host.classList.remove(cls), 520);
 }
 
+/** How long the arriving filter takes to land, at the pace a screen does. */
+const SLIDE_LAND = 280;
+
+/**
+ * Pattern B again, at the size of a list rather than a screen.
+ *
+ * Crossing the Activity filters moves the way crossing a tab does: the list you
+ * asked for comes in from the side and the one you left goes out after it.
+ *
+ * It goes straight there. An earlier version slid through every chip in
+ * between, one 130ms step each, so that how far along the strip you had jumped
+ * was something you watched rather than worked out - but a jump of three took
+ * over half a second to show you a list you had already asked for, and in the
+ * hand that reads as lag rather than as information. The direction still says
+ * which way you went; the distance is not worth the wait.
+ *
+ * The pane is built whole before it moves. The first version patched the rows
+ * in place instead, and a patch is a redraw: you could watch the list being
+ * rewritten under you a row at a time, which is precisely the thing a slide is
+ * there to replace.
+ *
+ * @param {HTMLElement} view  the frame the panes move inside; it keeps its box
+ * @param {HTMLElement} next  the ready-built pane arriving
+ * @param {number} direction  which way along the strip the tap went
+ */
+export function slideThrough(view, next, direction) {
+  if (!next) return;
+
+  if (reducedMotion()) {
+    view.replaceChildren(next);
+    return;
+  }
+
+  // A tap part way through an earlier slide takes over from it: its timers are
+  // dropped, and whatever pane it had reached is the one this slide leaves.
+  clearTimeout(view.__slide);
+  const held = view.firstElementChild;
+  if (!held) { view.replaceChildren(next); return; }
+  view.replaceChildren(held);
+
+  view.classList.add('slide-view');
+  view.style.height = view.offsetHeight + 'px';
+
+  const park = (n, at) => {
+    n.style.position = 'absolute';
+    n.style.top = '0';
+    n.style.left = '0';
+    n.style.width = '100%';
+    n.style.transition = 'none';
+    n.style.transform = 'translateX(' + at + ')';
+  };
+
+  const unpark = (n) => {
+    for (const k of ['position', 'top', 'left', 'width', 'transition', 'transform']) {
+      n.style.removeProperty(k);
+    }
+  };
+
+  park(held, '0%');
+
+  // Parked a full width out on the side it comes from, and measured there:
+  // absolute at full width, so the height it reports is the height it will take
+  // up once it has arrived.
+  view.appendChild(next);
+  park(next, direction > 0 ? '100%' : '-100%');
+  const rise = next.offsetHeight;
+
+  void view.offsetWidth; // both panes settled where they start
+  const glide = 'transform ' + SLIDE_LAND + 'ms var(--ease-enter)';
+  held.style.transition = glide;
+  held.style.transform = 'translateX(' + (direction > 0 ? '-100%' : '100%') + ')';
+  next.style.transition = glide;
+  next.style.transform = 'translateX(0)';
+  // The frame follows the pane arriving in it rather than snapping at the end,
+  // so a short filter and a long one hand over without the page jumping.
+  view.style.transition = 'height ' + SLIDE_LAND + 'ms var(--ease-enter)';
+  view.style.height = rise + 'px';
+
+  view.__slide = setTimeout(() => {
+    held.remove();
+
+    // Back into the flow: the list is a plain block again, and the frame stops
+    // holding a height that would go stale the moment anything else - a
+    // keystroke in the search box, a transaction saved - changes the list.
+    unpark(next);
+    view.classList.remove('slide-view');
+    view.style.removeProperty('height');
+    view.style.removeProperty('transition');
+  }, SLIDE_LAND);
+}
+
+
 /**
  * Charts animate their data: bars grow from the baseline.
  *

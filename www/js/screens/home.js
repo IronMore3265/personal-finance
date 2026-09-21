@@ -15,7 +15,6 @@ import {
 } from '../ui/styles.js';
 
 
-const HOME_CURRENCY = 'BDT';
 const PRIMARY_ACCOUNT = 'a2';
 
 /* One dot of the card's overflow menu. These were `.acctcard__dots i` - a
@@ -106,7 +105,7 @@ function accountRows() {
         el('div', { class: ROW_TITLE + ' ' + ELLIP, text: a.name }),
         el('div', {
           class: ROW_META,
-          text: a.typeLabel + (a.currency === HOME_CURRENCY ? '' : ' · ' + a.currency)
+          text: a.typeLabel + (a.currency === store.homeCurrency ? '' : ' · ' + a.currency)
         })
       ]),
       sparkline(sparkPoints(history), stroke),
@@ -147,7 +146,7 @@ function recurringRows() {
       ]),
       el('div', {
         class: ROW_AMT_BARE + ' flex-none text-danger',
-        text: fmt(b.amount, HOME_CURRENCY)
+        text: fmt(b.amount, store.homeCurrency)
       }),
       // Paying is a single lime tick, not the words "Mark paid".
       el('div', {
@@ -193,7 +192,7 @@ function debtSummary(owedToMe, iOwe) {
     el('div', {
       class: 'font-ui font-extrabold text-[19px]/[1] mt-[7px] tracking-[-.03em] '
         + 'normal-nums ' + tone,
-      text: fmt(value, HOME_CURRENCY)
+      text: fmt(value, store.homeCurrency)
     })
   ]);
 
@@ -228,7 +227,7 @@ export function renderHome() {
         class: 'font-ui font-extrabold text-[44px]/[1] text-ink tracking-[-.045em] '
           + 'mt-[14px] whitespace-nowrap normal-nums',
         dataset: { testid: 'balance-value' },
-        text: fmt(store.homeBalance(), HOME_CURRENCY)
+        text: fmt(store.homeBalance(), store.homeCurrency)
       }),
       el('div', {
         class: 'flex items-center justify-center gap-1.5 mt-[11px] font-ui '
@@ -237,7 +236,7 @@ export function renderHome() {
       }, [
         icon(up ? 'chevronUp' : 'chevronDown', 13, { weight: 2 }),
         el('div', {
-          text: signed(totals.net, HOME_CURRENCY) + ' this month'
+          text: signed(totals.net, store.homeCurrency) + ' this month'
         })
       ]),
       // A switch, not a filter pill. It does not narrow a list the way the

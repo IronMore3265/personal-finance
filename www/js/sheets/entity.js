@@ -17,7 +17,7 @@ import {
 import { LUCIDE, ICON_GROUPS } from '../ui/lucide-paths.js';
 import { SWATCHES } from '../ui/palette.js';
 import { BRAND_KEYS, brandChip } from '../ui/brands.js';
-import { TYPE_LABEL } from '../data/seed.js';
+import { TYPE_LABEL, CURRENCIES } from '../data/seed.js';
 
 const patch = (p) => store.set({ editEntity: { ...store.ui.editEntity, ...p } });
 
@@ -153,7 +153,7 @@ function accountFields(e) {
   return [
     fieldLabel('Currency'),
     el('div', { class: CHIPROW_FLUSH, dataset: { testid: 'chiprow' } },
-      ['BDT', 'USD'].map(c => chip(c, e.currency === c, () => patch({ currency: c })))
+      CURRENCIES.map(c => chip(c, e.currency === c, () => patch({ currency: c })))
     ),
 
     fieldLabel('Opening balance'),

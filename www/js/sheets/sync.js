@@ -82,6 +82,17 @@ function signedIn() {
       class: SYNC_NOTE,
       text: 'Your ledger lives on this device and is copied to Supabase. '
         + 'Sign in with the same address on another phone to see it there.'
+    }),
+
+    /*
+     * Worth saying before they tap it. "Forgot password" is answered by the
+     * app lock rather than by an email, and that only works while this phone
+     * still holds a session - signing out is what throws that away.
+     */
+    el('div', {
+      class: SYNC_NOTE,
+      text: 'Signing out needs your password to undo. While you stay signed in, '
+        + 'your fingerprint is enough to set a new one.'
     })
   ]);
 
@@ -99,7 +110,9 @@ function signedIn() {
       class: DELBTN_WIDE + ' ' + TAP
         + (store.ui.confirmDelete ? ' bg-danger text-white' : ' bg-soft text-ink2'),
       dataset: { testid: 'delbtn', armed: store.ui.confirmDelete ? '1' : '0' },
-      text: store.ui.confirmDelete ? 'Tap again to sign out' : 'Sign out',
+      text: store.ui.confirmDelete
+        ? 'Tap again — you will need your password'
+        : 'Sign out',
       onClick: async () => {
         if (!store.ui.confirmDelete) { store.set({ confirmDelete: true }); return; }
         await supabase.signOut();
@@ -114,118 +127,37 @@ function signedIn() {
   return [body, foot];
 }
 
-/** Signed out: email, password, and a mode switch. */
+/**
+ * Signed out: a word about what an account is for, and the way to the form.
+ *
+ * The form itself lives on the sign-in screen (screens/signin.js), which is
+ * the same one a first run meets. Keeping a second copy here meant two places
+ * to change the validation, the error handling and the Remember me tick, and
+ * two chances for them to drift apart.
+ */
 function signedOut() {
-  const creating = store.ui.syncMode === 'signup';
-  const busy = store.ui.syncBusy;
-
   const body = el('div', { class: SHEET_BODY, dataset: { testid: 'sheet-body' } }, [
-    el('div', { class: 'flex bg-soft rounded-pill p-1' }, [
-      el('div', {
-        class: 'flex-1 text-center py-[11px] px-1 rounded-pill font-ui font-semibold '
-          + 'text-[12.5px] normal-nums ' + TAP
-          + (!creating ? ' bg-ink text-bg' : ' bg-transparent text-ink3'),
-        text: 'Sign in',
-        onClick: () => store.set({ syncMode: 'signin', syncError: null })
-      }),
-      el('div', {
-        class: 'flex-1 text-center py-[11px] px-1 rounded-pill font-ui font-semibold '
-          + 'text-[12.5px] normal-nums ' + TAP
-          + (creating ? ' bg-ink text-bg' : ' bg-transparent text-ink3'),
-        text: 'Create account',
-        onClick: () => store.set({ syncMode: 'signup', syncError: null })
-      })
-    ]),
-
-    fieldLabel('Email'),
-    el('input', {
-      id: 'sync-email',
-      class: FIELD,
-      type: 'email',
-      inputmode: 'email',
-      autocapitalize: 'none',
-      autocomplete: 'email',
-      value: store.ui.syncEmail || '',
-      placeholder: 'you@example.com',
-      onInput: (e) => store.set({ syncEmail: e.target.value }, true)
-    }),
-
-    fieldLabel('Password'),
-    el('input', {
-      id: 'sync-password',
-      class: FIELD,
-      type: 'password',
-      autocomplete: creating ? 'new-password' : 'current-password',
-      value: store.ui.syncPassword || '',
-      placeholder: creating ? 'at least 6 characters' : '',
-      onInput: (e) => store.set({ syncPassword: e.target.value }, true)
-    }),
-
-    store.ui.syncError
-      ? el('div', { class: SYNC_ERR, text: store.ui.syncError })
-      : null,
+    statusBlock(),
 
     el('div', {
       class: SYNC_NOTE,
-      text: creating
-        ? 'Everything already on this phone is uploaded to the new account — '
-          + 'nothing is replaced or lost.'
-        : 'Signing in merges this phone’s ledger with the account. '
-          + 'Existing transactions are kept.'
+      text: 'With an account your ledger is copied to Supabase as you go, and '
+        + 'signing in on another phone brings it with you. Nothing is uploaded '
+        + 'until you do — everything you have entered so far stays on this device '
+        + 'either way.'
     })
-  ].filter(Boolean));
+  ]);
 
   const foot = el('div', { class: SHEET_FOOT }, [
     el('div', {
-      class: SAVEBTN + ' ' + TAP
-        + (busy ? ' bg-soft text-ink3' : ' bg-accent text-accent-ink'),
-      dataset: { testid: 'savebtn', ready: busy ? '0' : '1' },
-      text: busy ? 'Working…' : (creating ? 'Create account' : 'Sign in'),
-      onClick: () => submit(creating)
+      class: SAVEBTN + ' bg-accent text-accent-ink ' + TAP,
+      dataset: { testid: 'savebtn', ready: '1' },
+      text: 'Sign in or create an account',
+      onClick: () => store.set({ sheet: null, authGate: true, authStep: 'signin' })
     })
   ]);
 
   return [body, foot];
-}
-
-async function submit(creating) {
-  const email = (store.ui.syncEmail || '').trim();
-  const password = store.ui.syncPassword || '';
-
-  if (!email || !password) { store.set({ syncError: 'Email and password, please' }); return; }
-  if (creating && password.length < 6) {
-    store.set({ syncError: 'Passwords need at least 6 characters' });
-    return;
-  }
-
-  store.set({ syncBusy: true, syncError: null });
-  try {
-    if (creating) {
-      const { confirmationRequired } = await supabase.signUp(email, password);
-      if (confirmationRequired) {
-        store.set({
-          syncBusy: false,
-          syncError: 'Check your email to confirm the address, then sign in.',
-          syncMode: 'signin'
-        });
-        return;
-      }
-    } else {
-      await supabase.signIn(email, password);
-    }
-
-    // Clear the password out of memory as soon as it is spent.
-    store.set({ syncBusy: false, syncPassword: '', syncError: null });
-    store.say('Signed in · syncing');
-
-    await sync.run();
-    await store.reload();
-  } catch (err) {
-    store.set({
-      syncBusy: false,
-      syncError: String((err && err.message) || err)
-    });
-  }
 }
 
 export function renderSyncSheet() {

@@ -8,6 +8,8 @@ import { el } from '../core/dom.js';
 import { store } from '../core/store.js';
 import { icon } from '../ui/icons.js';
 import { toggle, fieldLabel } from '../ui/components.js';
+import * as lock from '../core/lock.js';
+import { SYM } from '../data/seed.js';
 import { repo } from '../data/repo.js';
 import { supabase } from '../data/supabase.js';
 import { sync } from '../data/sync.js';
@@ -19,6 +21,15 @@ const SETROW = 'flex items-center gap-3 py-[15px] border-b border-line';
 const SETROW_BODY = 'flex-1 min-w-0';
 const SETROW_TITLE = 'font-ui font-semibold text-[14px]/[1] text-ink normal-nums';
 const SETROW_SUB = 'font-ui font-medium text-[11px]/[1.5] text-ink3 mt-[7px] normal-nums';
+
+/** The home currency and where its rate came from, for the Settings row. */
+function currencySummary() {
+  const code = store.homeCurrency;
+  const line = code + ' · ' + SYM[code];
+  if (code === 'BDT' && !store.ui.fxRate) return line;
+  const rate = store.rates.USD;
+  return line + ' · 1 USD = ' + rate.toLocaleString('en-US') + ' BDT';
+}
 
 /** One line describing where sync has got to, for the Settings row. */
 function syncSummary() {
@@ -69,11 +80,46 @@ function appearance() {
     settingRow({
       glyph: 'coin',
       title: 'Home currency',
-      trailing: el('div', {
-        class: 'font-ui font-bold text-[12.5px]/[1] text-ink2 whitespace-nowrap '
-          + 'flex-none normal-nums',
-        text: 'BDT · ৳'
-      })
+      sub: currencySummary(),
+      trailing: chevron(),
+      onClick: () => store.set({ sheet: 'currency', fxRateDraft: '' })
+    })
+  ];
+}
+
+/* ---------------- security ---------------- */
+
+/**
+ * The app lock row.
+ *
+ * Turning it on asks for a fingerprint first. Not ceremony: it is the only
+ * way to know the sensor answers before the lock starts standing between the
+ * user and their ledger. Where there is nothing enrolled the row says so and
+ * does nothing, rather than offering a switch that would brick the app.
+ */
+function security() {
+  const ready = store.ui.lockAvailable;
+
+  return [
+    fieldLabel('Security'),
+    settingRow({
+      glyph: 'lock',
+      title: 'App lock',
+      sub: ready
+        ? 'Ask for your fingerprint or face when Paisa opens'
+        : 'No fingerprint or face enrolled on this device',
+      trailing: ready
+        ? toggle(store.ui.appLock, async () => {
+          if (store.ui.appLock) { await store.setAppLock(false); return; }
+          const ok = await lock.verify('Turn on the app lock');
+          if (!ok) { store.say('Not turned on · the check did not pass'); return; }
+          await store.setAppLock(true);
+          store.say('App lock on');
+        })
+        : el('div', {
+          class: 'font-ui font-semibold text-[11.5px]/[1] text-ink3 flex-none normal-nums',
+          text: 'Unavailable'
+        })
     })
   ];
 }
@@ -220,5 +266,5 @@ function data() {
 }
 
 export function renderSettings() {
-  return [...appearance(), ...library(), ...smsCapture(), ...data()];
+  return [...appearance(), ...security(), ...library(), ...smsCapture(), ...data()];
 }
